@@ -1,0 +1,37 @@
+# Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
+
+client_id = "2be227f1bf7106b6aaf1bb699d7fd702"
+application_url = "https://b2b-platforms-integration.fly.dev"
+embedded = true
+name = "B2B Platforms Integration"
+handle = "b2b-platforms-integration"
+
+[webhooks]
+api_version = "2025-01"
+
+  [[webhooks.subscriptions]]
+  topics = [
+  "app/scopes_update",
+  "app/uninstalled",
+  "products/create",
+  "products/delete",
+  "products/update"
+]
+  uri = "/webhooks"
+
+[access_scopes]
+# Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
+scopes = "read_inventory,read_orders,read_products,write_inventory,write_orders,write_products"
+
+[auth]
+redirect_urls = [
+  "https://b2b-platforms-integration.fly.dev/auth/callback",
+  "https://b2b-platforms-integration.fly.dev/auth/shopify/callback",
+  "https://b2b-platforms-integration.fly.dev/api/auth/callback"
+]
+
+[pos]
+embedded = false
+
+[build]
+include_config_on_deploy = true

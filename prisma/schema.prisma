@@ -1,0 +1,120 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  // directUrl = env("DIRECT_URL")
+}
+
+model Session {
+  id            String    @id
+  shop          String
+  state         String
+  isOnline      Boolean   @default(false) @map("is_online")
+  scope         String?
+  expires       DateTime?
+  accessToken   String    @map("access_token")
+  userId        BigInt?   @map("user_id")
+  firstName     String?   @map("first_name")
+  lastName      String?   @map("last_name")
+  email         String?
+  accountOwner  Boolean   @default(false) @map("account_owner")
+  locale        String?
+  collaborator  Boolean?  @default(false)
+  emailVerified Boolean?  @default(false) @map("email_verified")
+
+  @@map("sessions")
+}
+
+model Store {
+  id                 String   @id @default(uuid())
+  domain             String   @unique
+  accessToken        String   @map("access_token")
+  currencyCode       String   @map("currency_code")
+  createdAt          DateTime @default(now()) @map("created_at")
+  lastProductsSyncAt DateTime @default(now()) @map("last_products_sync_at")
+
+  @@map("stores")
+}
+
+enum ProductStatus {
+  ACTIVE
+  ARCHIVED
+  DRAFT
+}
+
+enum Platform {
+  Shopify
+  Orderchamp
+  Faire
+  Ankorstore
+}
+
+model Product {
+  id                    String            @id() @default(uuid())
+  variants              ProductVariant[]
+  shopifyStorefrontId   String            @unique @map("shopify_storefront_id")
+  storeDomain           String            @map("store_domain")
+  variantsCount         Int?              @map("variants_count")
+  hasOnlyDefaultVariant Boolean?          @map("has_only_default_variant")
+  totalInventory        Int               @map("total_inventory") // 1
+  createdAt             DateTime          @default(now()) @map("created_at")
+  updatedAt             DateTime          @updatedAt @map("updated_at")
+  platformProducts      PlatformProduct[]
+
+  @@map("products")
+}
+
+model ProductVariant {
+  id                         String                   @id() @default(uuid())
+  product                    Product                  @relation(fields: [productId], references: [id])
+  productId                  String                   @map("product_id")
+  shopifyVariantStorefrontId String                   @map("shopify_variant_storefront_id")
+  shopifyProductStorefrontId String                   @map("shopify_product_storefront_id")
+  inventoryQuantity          Int                      @map("inventory_quantity")
+  sku                        String
+  createdAt                  DateTime                 @default(now()) @map("created_at")
+  updatedAt                  DateTime                 @updatedAt @map("updated_at")
+  platformProductVariants    PlatformProductVariant[]
+
+  @@unique([shopifyProductStorefrontId, shopifyVariantStorefrontId])
+  @@map("product_variants")
+}
+
+model PlatformProduct {
+  id           String         @id @default(uuid())
+  storefrontId String         @unique @map("storefront_id")
+  product      Product        @relation(fields: [productId], references: [id])
+  productId    String         @map("product_id")
+  sourceUrl    String?
+  platform     Platform // 2
+  title        String // 3
+  description  String?
+  category     String? // 4
+  tags         String[] // 5
+  status       ProductStatus? // 6
+  createdAt    DateTime       @default(now()) @map("created_at") // 7
+  updatedAt    DateTime       @updatedAt @map("updated_at") // 8
+
+  @@index([platform, productId])
+  @@map("platform_products")
+}
+
+model PlatformProductVariant {
+  id               String         @id @default(uuid())
+  storefrontId     String         @unique() @map("storefront_id")
+  productVariant   ProductVariant @relation(fields: [productVariantId], references: [id])
+  productVariantId String         @map("product_variant_id")
+  platform         Platform
+  price            String?
+  title            String
+  barcode          String?
+  createdAt        DateTime       @default(now()) @map("created_at")
+  updatedAt        DateTime       @updatedAt @map("updated_at")
+
+  @@unique([platform, productVariantId])
+  @@index([platform, productVariantId])
+  @@map("platform_product_variants")
+}

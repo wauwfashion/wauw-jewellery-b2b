@@ -1,0 +1,41 @@
+# Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
+
+client_id = "4ac69f80a0b3ee0fb8c0e240edd32500"
+application_url = "https://carlos-estates-baking-gas.trycloudflare.com"
+embedded = true
+name = "wauw-jewellery-b2b-dev"
+handle = "wauw-jewellery-b2b-dev"
+
+[build]
+automatically_update_urls_on_dev = true
+dev_store_url = "olavka-test-store.myshopify.com"
+
+[webhooks]
+api_version = "2025-01"
+
+  [[webhooks.subscriptions]]
+  topics = [
+  "app/scopes_update",
+  "app/uninstalled",
+  "orders/create",
+  "orders/delete",
+  "orders/edited",
+  "products/create",
+  "products/delete",
+  "products/update"
+]
+  uri = "/webhooks"
+
+[access_scopes]
+# Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
+scopes = "read_inventory,read_orders,read_products,write_inventory,write_orders,write_products"
+
+[auth]
+redirect_urls = [
+  "https://carlos-estates-baking-gas.trycloudflare.com/auth/callback",
+  "https://carlos-estates-baking-gas.trycloudflare.com/auth/shopify/callback",
+  "https://carlos-estates-baking-gas.trycloudflare.com/api/auth/callback"
+]
+
+[pos]
+embedded = false

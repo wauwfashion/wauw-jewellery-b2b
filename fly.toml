@@ -1,0 +1,28 @@
+# fly.toml app configuration file generated for b2b-platforms-integration on 2025-01-20T19:46:13+02:00
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = 'b2b-platforms-integration'
+primary_region = 'ams'
+
+[build]
+
+[env]
+  PORT = '8080'
+  SCOPES = 'read_inventory,read_orders,read_products,write_inventory,write_orders,write_products'
+  SHOPIFY_API_KEY = '2be227f1bf7106b6aaf1bb699d7fd702'
+  SHOPIFY_APP_URL = 'https://b2b-platforms-integration.fly.dev'
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = 'stop'
+  auto_start_machines = true
+  min_machines_running = 0
+  processes = ['app']
+
+[[vm]]
+  memory = '1gb'
+  cpu_kind = 'shared'
+  cpus = 1
