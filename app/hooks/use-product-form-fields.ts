@@ -11,6 +11,7 @@ import _ from 'lodash';
 import { ProductStatus } from '@prisma/client';
 
 import { MappedProductDetailsData } from '@/utils/map-product-details';
+import { InventoryPolicy } from '@/types';
 
 export interface ProductUpdateFields {
   productFields: {
@@ -19,20 +20,31 @@ export interface ProductUpdateFields {
     status: ProductStatus;
     tags: string[];
   };
-  variantFields: Record<string, Record<'sku' | 'price' | 'barcode', string>>;
+  variantFields: Record<
+    string,
+    Record<'sku' | 'price' | 'barcode' | 'title', string | undefined> &
+      Record<'createdAt' | 'updatedAt', Date | undefined>
+  >;
 }
 
 export interface ProductUpdateFieldsWithId {
   productFields: ProductUpdateFields['productFields'] & {
     id: string;
     storefrontId: string;
+    category?: string;
   };
   variantFields: {
-    id: string;
-    storefrontId: string;
+    id: string | null;
+    storefrontId?: string;
     sku: string;
     price: string;
     barcode: string;
+    parentVariantId: string | null;
+    title?: string;
+    inventoryQuantity: number;
+    inventoryPolicy: InventoryPolicy;
+    createdAt?: Date;
+    updatedAt?: Date;
   }[];
 }
 
@@ -45,28 +57,35 @@ export type FormFieldsMapping = ReturnType<typeof useProductFormFields>;
 
 export const useProductFormFields = (product: MappedProductDetailsData) => {
   const variantFields = (product?.variants ?? []).reduce(
-    (acc, { platformVariant, sku }) => {
+    (acc, variant) => {
+      if (!variant || !variant?.platformVariant) {
+        return acc;
+      }
+
       if (
-        platformVariant?.title === 'Default Title' &&
+        variant.platformVariant?.title === 'Default Title' &&
         (product?.variants?.length ?? 1) > 1
       ) {
         return acc;
       }
 
-      acc[platformVariant?.id as string] = {
+      acc[variant.platformVariant?.id as string] = {
         sku: useField({
-          value: sku || '',
+          value:
+            variant?.sku ||
+            `${variant.shopifyVariantStorefrontId.replace('gid://shopify/ProductVariant/', '')}-temp-sku` ||
+            '',
           validates: [notEmptyString('SKU is required.')],
         }),
         price: useField({
-          value: platformVariant?.price || '0.01',
+          value: variant.platformVariant?.price || '0.01',
           validates: [
             notEmptyString('Price is required.'),
             positiveNumericString('Price must be a number.'),
           ],
         }),
         barcode: useField({
-          value: platformVariant?.barcode || '',
+          value: variant.platformVariant?.barcode || '',
           validates: [
             notEmptyString('Barcode is required.'),
             positiveIntegerString('Barcode must be a number.'),

@@ -2,8 +2,8 @@ import * as shopifyProductsService from '@/services/shopify/products.server';
 import * as orderchampProductsService from '@/services/orderchamp/products.server';
 import prisma from '@/db.server';
 import { AdminApiContextWithoutRest } from 'node_modules/@shopify/shopify-app-remix/dist/ts/server/clients';
-import { InventoryPolicy, Platform, ProductWithPlatformData } from '@/types';
-import { ShopifyProduct } from './shopify/types';
+import { Platform } from '@/types';
+import { Metafield } from './shopify/types';
 
 export const syncProducts = async (
   graphqlClient: AdminApiContextWithoutRest['graphql'],
@@ -28,11 +28,19 @@ export const syncProducts = async (
       type === 'part' ? `created_at:>${lastProductsSync}` : undefined,
     );
 
-    console.log({ shopifyProducts, lastProductsSync });
-
     const storeName = storeDomain.replace('.myshopify.com', '');
 
     for (const product of shopifyProducts) {
+      const { metafields, platformPrice } =
+        await shopifyProductsService.retrieveMetafields(
+          graphqlClient,
+          product.id,
+          Object.values(Metafield),
+        );
+
+      const platformMetadata = (metafields[Metafield.Platforms] ||
+        []) as Platform[];
+
       const productId = product.id.split('/').at(-1);
 
       const productFromDB = await prisma.product.upsert({
@@ -143,19 +151,34 @@ export const syncProducts = async (
         });
       }
 
-      const productAfterUpsert = await prisma.product.findUnique({
-        where: {
-          shopifyStorefrontId: product.id,
-        },
-        include: {
-          platformProducts: true,
-          variants: {
-            include: { platformProductVariants: true },
-          },
-        },
-      });
+      if (platformMetadata.includes(Platform.Orderchamp)) {
+        const marketplaceStorefront = (metafields[
+          Metafield.OrderchampMarketplace
+        ] || [])?.[0];
 
-      await orderchampProductsService.syncProduct(productAfterUpsert, product);
+        const productCategory = (metafields[
+          Metafield.OrderchampProductCategory
+        ] || [])?.[0];
+
+        const mappedProductVariants = product.variants.nodes.map((variant) => ({
+          ...variant,
+          msrp: variant.price || '0.01',
+          price: platformPrice || variant.price || '0.01',
+        }));
+
+        const mappedProduct = {
+          ...product,
+          variants: {
+            nodes: mappedProductVariants,
+          },
+        };
+
+        await orderchampProductsService.syncProduct(
+          mappedProduct,
+          productCategory,
+          marketplaceStorefront,
+        );
+      }
     }
 
     await prisma.store.update({

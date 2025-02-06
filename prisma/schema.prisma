@@ -52,6 +52,29 @@ enum Platform {
   Ankorstore
 }
 
+enum OrderPaymentStatus {
+  AUTHORIZED
+  EXPIRED
+  PAID
+  PARTIALLY_PAID
+  PARTIALLY_REFUNDED
+  PENDING
+  REFUNDED
+  VOIDED
+}
+
+enum OrderFulfillmentStatus {
+  FULFILLED
+  IN_PROGRESS
+  ON_HOLD
+  OPEN
+  PARTIALLY_FULFILLED
+  PENDING_FULFILLMENT
+  RESTOCKED
+  SCHEDULED
+  UNFULFILLED
+}
+
 model Product {
   id                    String            @id() @default(uuid())
   variants              ProductVariant[]
@@ -71,7 +94,7 @@ model ProductVariant {
   id                         String                   @id() @default(uuid())
   product                    Product                  @relation(fields: [productId], references: [id])
   productId                  String                   @map("product_id")
-  shopifyVariantStorefrontId String                   @map("shopify_variant_storefront_id")
+  shopifyVariantStorefrontId String                   @unique @map("shopify_variant_storefront_id")
   shopifyProductStorefrontId String                   @map("shopify_product_storefront_id")
   inventoryQuantity          Int                      @map("inventory_quantity")
   sku                        String
@@ -104,7 +127,7 @@ model PlatformProduct {
 
 model PlatformProductVariant {
   id               String         @id @default(uuid())
-  storefrontId     String         @unique() @map("storefront_id")
+  storefrontId     String         @unique @map("storefront_id")
   productVariant   ProductVariant @relation(fields: [productVariantId], references: [id])
   productVariantId String         @map("product_variant_id")
   platform         Platform
@@ -114,7 +137,25 @@ model PlatformProductVariant {
   createdAt        DateTime       @default(now()) @map("created_at")
   updatedAt        DateTime       @updatedAt @map("updated_at")
 
-  @@unique([platform, productVariantId])
   @@index([platform, productVariantId])
   @@map("platform_product_variants")
+}
+
+model Order {
+  id                String                 @id @default(uuid())
+  name              String
+  customer          String
+  totalPrice        Decimal                @map("total_price")
+  currencyCode      String                 @map("currency_code")
+  storefrontId      String                 @unique @map("storefront_id")
+  paymentStatus     OrderPaymentStatus     @map("payment_status")
+  fulfillmentStatus OrderFulfillmentStatus @map("fulfillment_status")
+  platform          Platform
+  lineItemsCount    Int                    @map("line_items_count")
+  tags              String[]
+  sourceUrl         String                 @map("source_url")
+  createdAt         DateTime               @default(now()) @map("created_at")
+  updatedAt         DateTime               @updatedAt @map("updated_at")
+
+  @@map("orders")
 }

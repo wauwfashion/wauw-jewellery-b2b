@@ -34,8 +34,30 @@ export interface OrderchampProduct {
   updatedAt: Date;
 }
 
+export interface OrderchampOrder {
+  id: string;
+  number: string;
+  customer?: {
+    email?: string | null;
+  };
+  totalPrice: string;
+  currency: string;
+  status: string;
+  isFulfilled: boolean;
+  isPaid: boolean;
+  isConfirmed: boolean;
+  productsCount: number;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 export interface OrderchampProductsResponse {
   nodes: OrderchampProduct[];
+  pageInfo: PageInfo;
+}
+
+export interface OrderchampOrdersResponse {
+  nodes: OrderchampOrder[];
   pageInfo: PageInfo;
 }
 
@@ -56,12 +78,14 @@ export interface CreateProductInput {
   title: string;
   description?: string;
   brand: string;
+  category?: string | null;
   images?: { sourceUrl: string }[];
   option1: string | null;
   option2: string | null;
   option3: string | null;
   variants: {
     barcode: string;
+    msrp?: string;
     inventoryQuantity: number;
     price: string;
     sku: string;

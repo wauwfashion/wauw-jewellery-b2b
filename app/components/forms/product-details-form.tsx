@@ -13,12 +13,13 @@ import {
   Tabs,
   Text,
   TextField,
+  Tooltip,
 } from '@shopify/polaris';
 import { LinkIcon } from '@shopify/polaris-icons';
 
 import { MultiCombobox, OptionItem, PriceInput } from '@/components/forms';
 import { Platform, ProductStatus } from '@/types';
-import { firstUpperCase } from '@/utils/string-utils';
+import { firstUpperCase, truncate } from '@/utils/string-utils';
 import {
   FormFieldsMapping,
   UpdateVariantFields,
@@ -56,16 +57,20 @@ export const ProductDetailsForm: FC<Props> = ({
   const { title, description, status, ...restFields } = fields;
   const variantFields = restFields as UpdateVariantFields;
 
+  const filteredVariants = (product?.variants || []).filter(
+    (variant) => !!variant?.platformVariant,
+  );
+
   const isDefaultVariant = useMemo(
     () =>
-      product?.variants.length === 1 &&
-      product?.variants[0].platformVariant?.title === 'Default Title',
-    [product],
+      filteredVariants?.length === 1 &&
+      filteredVariants[0].platformVariant?.title === 'Default Title',
+    [filteredVariants],
   );
 
   const preparedVariants = isDefaultVariant
-    ? product?.variants || []
-    : product?.variants.filter(
+    ? filteredVariants || []
+    : filteredVariants.filter(
         (variant) => variant.platformVariant?.title !== 'Default Title',
       ) || [];
 
@@ -78,6 +83,7 @@ export const ProductDetailsForm: FC<Props> = ({
       })),
     [preparedVariants],
   );
+
   const isSingleVariant = preparedVariants.length === 1;
 
   return (
@@ -169,7 +175,7 @@ export const ProductDetailsForm: FC<Props> = ({
                             ?.id as string
                         ].barcode}
                       />
-                      <TextField
+                      <PriceInput
                         autoComplete=""
                         label="Price"
                         type="text"
@@ -222,7 +228,7 @@ export const ProductDetailsForm: FC<Props> = ({
                       <Divider />
                     </Bleed>
                   </Box>
-                  <TextField
+                  <PriceInput
                     autoComplete=""
                     label="Price"
                     type="text"
@@ -244,7 +250,19 @@ export const ProductDetailsForm: FC<Props> = ({
               {product?.platformProduct.category && (
                 <Box>
                   <Text as="span">
-                    Category: {product?.platformProduct.category}
+                    {product?.platformProduct.category.length >= 40 ? (
+                      <>
+                        Category:{' '}
+                        <Tooltip
+                          content={product?.platformProduct.category}
+                          hasUnderline
+                        >
+                          {truncate(product?.platformProduct.category, 40)}
+                        </Tooltip>
+                      </>
+                    ) : (
+                      <>Category: {product?.platformProduct.category}</>
+                    )}
                   </Text>
                 </Box>
               )}

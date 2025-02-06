@@ -2,6 +2,7 @@ import { Platform } from '@/types';
 import { mapPlatformProducts } from '@/utils/map-platform-products';
 import { generateProductsSkuMap } from '@/utils/generate-products-sku-map';
 import * as orderchampProductsService from '@/services/orderchamp/products.server';
+import * as faireProductsService from '@/services/faire/products.server';
 import prisma from '@/db.server';
 
 export const seedProducts = async (storeDomain: string) => {
@@ -34,6 +35,13 @@ export const seedProducts = async (storeDomain: string) => {
 
     await orderchampProductsService.importOrderchampProducts(
       allOrderchampProducts,
+      productsSkuMap,
+    );
+
+    const allFaireProducts = await faireProductsService.retrieveAllProducts();
+
+    await faireProductsService.importFaireProducts(
+      allFaireProducts,
       productsSkuMap,
     );
   } catch (err) {

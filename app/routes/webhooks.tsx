@@ -1,7 +1,7 @@
 import type { ActionFunctionArgs } from '@remix-run/node';
 
 import { authenticate } from '@/shopify.server';
-import { webhookHandlers } from '@/api/webhooks';
+import { webhookHandlers } from '@/api/webhooks/shopify';
 import { WebhookTopic } from '@/types';
 
 export const action = async ({ request }: ActionFunctionArgs) => {

@@ -1,5 +1,7 @@
 import {
   InventoryPolicy,
+  OrderFulfillmentStatus,
+  OrderPaymentStatus,
   PageInfo,
   ProductCategory,
   ProductStatus,
@@ -15,6 +17,7 @@ export enum MediaType {
 export interface ShopifyProductVariant {
   id: string;
   title: string;
+  msrp?: string;
   sku: string;
   barcode?: string;
   price: string;
@@ -78,7 +81,34 @@ export interface ShopifyQueryCost {
   };
 }
 
-export interface FullShopifyProductVariant {
+export interface ShopifyOrder {
+  id: string;
+  name: string;
+  confirmed: boolean;
+  fullyPaid: boolean;
+  customer?: {
+    email?: string;
+  };
+  currentTotalPriceSet: {
+    shopMoney: {
+      amount: string;
+      currencyCode: string;
+    };
+  };
+  displayFulfillmentStatus: OrderFulfillmentStatus;
+  displayFinancialStatus: OrderPaymentStatus;
+  tags: string[];
+  subtotalLineItemsQuantity: number;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface ShopifyOrdersResponse {
+  nodes: ShopifyOrder[];
+  pageInfo: PageInfo;
+}
+
+export interface ShopifyProductPayloadVariant {
   admin_graphql_api_id: string;
   barcode: string | null;
   compare_at_price: string;
@@ -119,7 +149,7 @@ export interface ShopifyImage {
   variant_ids: string[];
 }
 
-export interface FullShopifyProductOption {
+export interface ShopifyProductPayloadOption {
   id: string;
   name: string;
   product_id: string;
@@ -127,7 +157,7 @@ export interface FullShopifyProductOption {
   values: string[];
 }
 
-export interface FullShopifyProduct {
+export interface ShopifyProductPayload {
   admin_graphql_api_id: string;
   body_html: string;
   created_at: Date;
@@ -142,8 +172,8 @@ export interface FullShopifyProduct {
   status: string;
   published_scope: string;
   tags: string;
-  variants: FullShopifyProductVariant[];
-  options: FullShopifyProductOption[];
+  variants: ShopifyProductPayloadVariant[];
+  options: ShopifyProductPayloadOption[];
   images: ShopifyImage[];
   image: ShopifyImage;
   category: {
@@ -151,4 +181,12 @@ export interface FullShopifyProduct {
     name: string;
     full_name: string;
   };
+}
+
+export enum Metafield {
+  Platforms = 'custom.platforms',
+  OrderchampMarketplace = 'custom.orderchamp_marketplace',
+  OrderchampProductCategory = 'custom.orderchamp_category',
+  // OrderchampMSRP = 'custom.orderchamp_msrp',
+  // PlatformPrice = 'custom.platform_price',
 }

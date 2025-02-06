@@ -14,7 +14,6 @@ import {
   TabProps,
   Tabs,
   Badge,
-  TextField,
   EmptyState,
   Card,
 } from '@shopify/polaris';
@@ -35,7 +34,7 @@ import {
 import { handleApiResponse } from '@/utils/api-response-handler';
 import { mapProductDetails } from '@/utils/map-product-details';
 import { firstUpperCase } from '@/utils/string-utils';
-import { generateUpdateProductFields } from '@/utils/generate-update-product-fields';
+import { prepareUpdateProductFields } from '@/utils/prepare-update-product-fields';
 import { createNewProductUrl } from '@/utils/create-new-product-url';
 import { authenticate } from '@/shopify.server';
 import { platforms, statusBadgeProgress } from '@/constants';
@@ -78,8 +77,6 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
           },
         },
       });
-
-      console.log({ product });
 
       return {
         product,
@@ -146,40 +143,18 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 
           const product = await prisma.product.findFirst({
             where: { id: productId },
-            select: {
-              hasOnlyDefaultVariant: true,
+            include: {
+              platformProducts: true,
               variants: {
-                select: {
-                  platformProductVariants: {
-                    select: {
-                      id: true,
-                      platform: true,
-                      storefrontId: true,
-                      title: true,
-                    },
-                  },
-                },
-              },
-              platformProducts: {
-                select: {
-                  id: true,
-                  platform: true,
-                  storefrontId: true,
+                include: {
+                  platformProductVariants: true,
                 },
               },
             },
           });
 
-          const updateProductData = generateUpdateProductFields({
+          const updateProductData = prepareUpdateProductFields({
             currentPlatform: currentPlatform as Platform,
-            product,
-            productFields,
-            variantFields,
-          });
-
-          console.log({
-            currentPlatform,
-            updateProductData,
             product,
             productFields,
             variantFields,
@@ -411,6 +386,10 @@ export default function ProductDetailsPage() {
     startTransition(() => {
       submit({}, { method: 'DELETE' });
     });
+
+    setTimeout(() => {
+      navigate('/app');
+    }, 1500);
   }, []);
 
   const handleUpdateProduct = useCallback(async () => {

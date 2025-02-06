@@ -11,20 +11,10 @@ import {
 } from '@/services/orderchamp/types';
 import { handleGraphqlThrottle } from '@/utils/graphql-throttle-handler';
 import { MappedPlatformProductData } from '@/utils/map-platform-products';
-import {
-  InventoryPolicy,
-  Platform,
-  ProductStatus,
-  ProductWithPlatformData,
-  UserError,
-} from '@/types';
-import {
-  ProductUpdateFields,
-  ProductUpdateFieldsWithId,
-} from '@/hooks/use-product-form-fields';
+import { InventoryPolicy, Platform, ProductStatus, UserError } from '@/types';
+import { ProductUpdateFieldsWithId } from '@/hooks/use-product-form-fields';
 import prisma from '@/db.server';
-import { generateUpdateProductFields } from '@/utils/generate-update-product-fields';
-import { FullShopifyProduct, ShopifyProduct } from '../shopify/types';
+import { ShopifyProduct } from '../shopify/types';
 
 export async function retrieveChunkOfProducts(
   first: number,
@@ -93,14 +83,37 @@ export async function retrieveProductByID(id: string) {
       query Products($id: ID!) {
         product(id: $id) {
           id
+          title
+          description
+          databaseId
+          salesChannels
+          category {
+            id
+            name
+          }
+          tags
+          createdAt
+          updatedAt
+          variants(first: 100) {
+            nodes {
+              id
+              inventoryQuantity
+              barcode
+              sku
+              title
+              price
+              createdAt
+              updatedAt
+            }
+          }
         }
       }
     `;
 
     const { data } = (await orderchampGraphqlClient.rawRequest(query, {
-      id,
+      id: id || 'empty',
     })) as {
-      data: { product: { id: string } | null };
+      data: { product: OrderchampProduct | null };
     };
 
     return data?.product;
@@ -264,7 +277,8 @@ export async function removeProduct(productId: string) {
 
 export async function updateProduct(
   { productFields, variantFields }: ProductUpdateFieldsWithId,
-  images: { sourceUrl: string }[] = [],
+  images: { id?: string; sourceUrl?: string }[] = [],
+  marketplaceStorefrontLabel?: string,
 ) {
   try {
     const doc = gql`
@@ -272,6 +286,18 @@ export async function updateProduct(
         productUpdate(input: $input) {
           product {
             id
+            variants(first: 100) {
+              nodes {
+                id
+                inventoryQuantity
+                barcode
+                sku
+                title
+                price
+                createdAt
+                updatedAt
+              }
+            }
           }
           userErrors {
             message
@@ -283,15 +309,24 @@ export async function updateProduct(
 
     const {
       status,
+      category,
       storefrontId: productStorefrontId,
       id: productId,
       ...restProductFields
     } = productFields;
 
     const variants = variantFields.map(
-      ({ storefrontId, id, ...restFields }) => ({
-        id: storefrontId,
+      ({
+        parentVariantId,
+        createdAt,
+        updatedAt,
+        storefrontId,
+        title,
+        id,
+        ...restFields
+      }) => ({
         ...restFields,
+        id: storefrontId,
       }),
     );
 
@@ -299,53 +334,205 @@ export async function updateProduct(
       ...restProductFields,
       id: productStorefrontId,
       variants,
+      images,
     };
 
-    if (images.length) {
-      input.images = images;
+    if (category) {
+      input.category = category;
     }
+
+    console.log({
+      updateOrderchampProductInput: JSON.stringify(input, null, 2),
+    });
 
     const { data } = (await orderchampGraphqlClient.rawRequest(doc, {
       input,
     })) as {
       data: {
-        productUpdate: { product: { id: string }; userErrors: UserError[] };
+        productUpdate: {
+          product: {
+            id: string;
+            variants: { nodes: OrderchampProductVariant[] };
+          };
+          userErrors: UserError[];
+        };
       };
     };
 
-    const userErrors = data?.productUpdate?.userErrors || [];
+    const updatedProductId = data?.productUpdate?.product?.id || 'empty';
 
-    if (userErrors.length > 0) {
-      throw new Error(userErrors[0].message);
+    const productUpdateUserErrors = data?.productUpdate?.userErrors || [];
+
+    if (productUpdateUserErrors.length > 0) {
+      throw new Error(productUpdateUserErrors[0].message);
     }
 
-    await prisma.platformProduct.update({
+    let isActiveStatus = status === ProductStatus.ACTIVE;
+
+    if (marketplaceStorefrontLabel) {
+      const storefronts = await retrieveStorefronts(10);
+
+      const currentStorefront = storefronts.find(
+        (storefront) => storefront.name === marketplaceStorefrontLabel,
+      );
+
+      const publishProductDoc = gql`
+        mutation ProductPublish($input: ProductPublishInput!) {
+          productPublish(input: $input) {
+            userErrors {
+              field
+              message
+            }
+          }
+        }
+      `;
+
+      if (currentStorefront) {
+        const unpublishProductDoc = gql`
+          mutation ProductUnpublish($input: ProductUnpublishInput!) {
+            productUnpublish(input: $input) {
+              userErrors {
+                field
+                message
+              }
+            }
+          }
+        `;
+
+        const {
+          data: { productUnpublish },
+        } = (await orderchampGraphqlClient.rawRequest(unpublishProductDoc, {
+          input: {
+            id: updatedProductId,
+          },
+        })) as { data: { productUnpublish: { userErrors: UserError[] } } };
+
+        const unpublishUserErrors = productUnpublish.userErrors;
+
+        if (unpublishUserErrors.length > 0) {
+          throw unpublishUserErrors[0].message;
+        }
+
+        const {
+          data: { productPublish },
+        } = (await orderchampGraphqlClient.rawRequest(publishProductDoc, {
+          input: {
+            id: updatedProductId,
+            storefrontId: currentStorefront?.id || '',
+          },
+        })) as { data: { productPublish: { userErrors: UserError[] } } };
+
+        const userErrors = productPublish.userErrors;
+
+        if (userErrors.length > 0) {
+          throw userErrors[0].message;
+        }
+
+        isActiveStatus = true;
+      }
+    } else {
+      const unpublishProductDoc = gql`
+        mutation ProductUnpublish($input: ProductUnpublishInput!) {
+          productUnpublish(input: $input) {
+            userErrors {
+              field
+              message
+            }
+          }
+        }
+      `;
+
+      const {
+        data: { productUnpublish },
+      } = (await orderchampGraphqlClient.rawRequest(unpublishProductDoc, {
+        input: {
+          id: updatedProductId,
+        },
+      })) as { data: { productUnpublish: { userErrors: UserError[] } } };
+
+      const unpublishUserErrors = productUnpublish.userErrors;
+
+      if (unpublishUserErrors.length > 0) {
+        throw unpublishUserErrors[0].message;
+      }
+
+      isActiveStatus = false;
+    }
+
+    const updatedPlatformProduct = await prisma.platformProduct.update({
       where: {
         id: productId,
         platform: Platform.Orderchamp,
       },
       data: {
+        category: category || 'Uncategorized',
         description: productFields.description,
-        status: productFields.status,
+        status: isActiveStatus ? ProductStatus.ACTIVE : ProductStatus.DRAFT,
         tags: productFields.tags,
         title: productFields.title,
       },
-    });
-
-    for (const variantField of variantFields) {
-      await prisma.platformProductVariant.update({
-        where: {
-          platform: Platform.Orderchamp,
-          id: variantField.id,
-        },
-        data: {
-          barcode: variantField.barcode,
-          price: variantField.price,
-          productVariant: {
-            update: {
-              sku: variantField.sku,
+      include: {
+        product: {
+          include: {
+            variants: {
+              include: {
+                platformProductVariants: true,
+              },
             },
           },
+        },
+      },
+    });
+
+    const updatedProductVariants =
+      data?.productUpdate?.product?.variants?.nodes;
+
+    if (!updatedProductVariants?.length) {
+      return;
+    }
+
+    for (const variant of updatedProductVariants) {
+      const matchingProductVariant =
+        updatedPlatformProduct.product.variants.find(
+          (v) => v.sku === variant.sku,
+        );
+
+      if (!matchingProductVariant) {
+        continue;
+      }
+
+      await prisma.platformProductVariant.upsert({
+        where: {
+          platform: Platform.Orderchamp,
+          storefrontId: variant.id,
+        },
+        update: {
+          title: variant.title,
+          barcode: variant.barcode,
+          price: variant.price,
+          productVariant: {
+            update: {
+              sku: variant.sku,
+              inventoryQuantity: variant.inventoryQuantity,
+            },
+          },
+        },
+        create: {
+          platform: Platform.Orderchamp,
+          storefrontId: variant.id,
+          title: variant.title,
+          barcode:
+            variant.barcode ||
+            updatedPlatformProduct.product.variants
+              .find(({ sku }) => variant.sku === sku)
+              ?.shopifyVariantStorefrontId?.replace(
+                'gid://shopify/ProductVariant/',
+                '',
+              ),
+          price: variant.price,
+          createdAt: variant.createdAt,
+          updatedAt: variant.updatedAt,
+          productVariant: { connect: { id: matchingProductVariant.id } },
         },
       });
     }
@@ -355,12 +542,47 @@ export async function updateProduct(
   }
 }
 
+export async function retrieveStorefronts(first = 10) {
+  const doc = gql`
+    query MarketplaceStorefronts($first: Int!) {
+      storefronts(first: $first) {
+        nodes {
+          id
+          name
+          slug
+        }
+      }
+    }
+  `;
+
+  const { data } = (await orderchampGraphqlClient.rawRequest(doc, {
+    first,
+  })) as {
+    data: {
+      storefronts: {
+        nodes: {
+          id: string;
+          name: string;
+          slug: string;
+        }[];
+      };
+    };
+  };
+
+  return data.storefronts.nodes;
+}
+
 export async function createProduct(
   input: CreateProductInput,
   parentProduct: Product & { variants: ProductVariant[] },
+  marketplaceStorefrontLabel?: string,
 ) {
+  console.log({ input: JSON.stringify(input, null, 2) });
+  console.log({ parentProduct: JSON.stringify(parentProduct, null, 2) });
+  console.log({ marketplaceStorefrontLabel });
+
   try {
-    const doc = gql`
+    const createProductDoc = gql`
       mutation ProductCreate($input: ProductCreateInput!) {
         productCreate(input: $input) {
           product {
@@ -397,9 +619,12 @@ export async function createProduct(
       }
     `;
 
-    const { data } = (await orderchampGraphqlClient.rawRequest(doc, {
-      input,
-    })) as {
+    const { data } = (await orderchampGraphqlClient.rawRequest(
+      createProductDoc,
+      {
+        input,
+      },
+    )) as {
       data: {
         productCreate: {
           product: OrderchampProduct;
@@ -414,10 +639,50 @@ export async function createProduct(
       throw new Error(userErrors[0].message);
     }
 
+    const publishProductDoc = gql`
+      mutation ProductPublish($input: ProductPublishInput!) {
+        productPublish(input: $input) {
+          userErrors {
+            field
+            message
+          }
+        }
+      }
+    `;
+
     const createdProduct = data?.productCreate?.product || null;
 
     if (!createdProduct) {
       throw new Error('Error occurred while create Orderchamp product.');
+    }
+
+    let isActiveStatus = createdProduct.salesChannels.length > 0;
+
+    if (marketplaceStorefrontLabel) {
+      const storefronts = await retrieveStorefronts(10);
+
+      const currentStorefront = storefronts.find(
+        (storefront) => storefront.name === marketplaceStorefrontLabel,
+      );
+
+      if (currentStorefront) {
+        const {
+          data: { productPublish },
+        } = (await orderchampGraphqlClient.rawRequest(publishProductDoc, {
+          input: {
+            id: createdProduct.id,
+            storefrontId: currentStorefront?.id || '',
+          },
+        })) as { data: { productPublish: { userErrors: UserError[] } } };
+
+        const userErrors = productPublish.userErrors;
+
+        if (userErrors.length > 0) {
+          throw userErrors[0].message;
+        }
+
+        isActiveStatus = true;
+      }
     }
 
     await prisma.platformProduct.create({
@@ -430,9 +695,7 @@ export async function createProduct(
         storefrontId: createdProduct.id,
         sourceUrl: `https://www.orderchamp.com/backoffice/products/${createdProduct.databaseId}`,
         description: createdProduct.description,
-        status: !createdProduct?.salesChannels?.length
-          ? ProductStatus.DRAFT
-          : ProductStatus.ACTIVE,
+        status: !isActiveStatus ? ProductStatus.DRAFT : ProductStatus.ACTIVE,
         createdAt: createdProduct.createdAt,
         updatedAt: createdProduct.updatedAt,
       },
@@ -476,326 +739,193 @@ export async function createProduct(
   }
 }
 
-export async function createProductVariant(
-  {
-    option1,
-    option2,
-    option3,
-    ...input
-  }: Omit<CreateProductInput['variants'][number], 'option'> & {
-    productId: string;
-  },
-  parentProductVariantId: string,
-) {
-  const option = [option1, option2, option3].filter(Boolean).join(', ');
-
-  try {
-    const doc = gql`
-      mutation ProductVariantCreate($input: ProductVariantCreateInput!) {
-        productVariantCreate(input: $input) {
-          productVariant {
-            id
-            inventoryQuantity
-            barcode
-            sku
-            title
-            price
-            createdAt
-            updatedAt
-          }
-          userErrors {
-            message
-            field
-          }
-        }
-      }
-    `;
-
-    console.log({
-      input: JSON.stringify(
-        {
-          ...input,
-          option,
-        },
-        null,
-        2,
-      ),
-    });
-
-    const { data } = (await orderchampGraphqlClient.rawRequest(doc, {
-      input: {
-        ...input,
-        option,
-      },
-    })) as {
-      data: {
-        productVariantCreate: {
-          productVariant: OrderchampProductVariant;
-          userErrors: UserError[];
-        };
-      };
-    };
-
-    const userErrors = data?.productVariantCreate?.userErrors || [];
-
-    if (userErrors.length > 0) {
-      throw new Error(userErrors[0].message);
-    }
-
-    const createdProductVariant =
-      data?.productVariantCreate?.productVariant || null;
-
-    if (!createdProductVariant) {
-      throw new Error(
-        'Error occurred while create Orderchamp product variant.',
-      );
-    }
-
-    await prisma.platformProductVariant.create({
-      data: {
-        platform: Platform.Orderchamp,
-        storefrontId: createdProductVariant.id,
-        title: createdProductVariant.title,
-        barcode: createdProductVariant.barcode || null,
-        price: createdProductVariant.price || '0.01',
-        productVariant: {
-          connect: {
-            id: parentProductVariantId,
-          },
-        },
-        createdAt: createdProductVariant.createdAt,
-        updatedAt: createdProductVariant.updatedAt,
-      },
-    });
-  } catch (err) {
-    console.error(
-      'An error occurred while create product variant on Orderchamp: ',
-      err,
-    );
-
-    throw err;
-  }
-}
-
-export async function removeProductVariant(id: string) {
-  try {
-    const doc = gql`
-      mutation ProductVariantDelete($input: ProductVariantDeleteInput!) {
-        productVariantDelete(input: $input) {
-          deletedProductVariantId
-          userErrors {
-            message
-            field
-          }
-        }
-      }
-    `;
-
-    const { data } = (await orderchampGraphqlClient.rawRequest(doc, {
-      input: {
-        id,
-      },
-    })) as {
-      data: {
-        productVariantDelete: {
-          deletedProductVariantId: string;
-          userErrors: UserError[];
-        };
-      };
-    };
-
-    const userErrors = data?.productVariantDelete?.userErrors || [];
-
-    if (userErrors.length > 0) {
-      throw new Error(userErrors[0].message);
-    }
-
-    await prisma.platformProductVariant.delete({
-      where: {
-        storefrontId: id,
-      },
-    });
-  } catch (err) {
-    console.error(
-      'An error occurred while create product on Orderchamp: ',
-      err,
-    );
-
-    throw err;
-  }
-}
-
 export async function syncProduct(
-  productWithVariants: ProductWithPlatformData | null,
   shopifyProduct: ShopifyProduct,
+  category?: string,
+  marketplaceStorefrontLabel?: string,
 ) {
+  const productWithVariants = await prisma.product.findFirst({
+    where: {
+      shopifyStorefrontId: shopifyProduct.id,
+    },
+    include: {
+      platformProducts: true,
+      variants: {
+        include: {
+          platformProductVariants: true,
+        },
+      },
+    },
+  });
+
   if (!productWithVariants) {
     return;
   }
-
-  const productVariantsToRemove = productWithVariants.variants
-    .filter(
-      (variant) =>
-        !shopifyProduct.variants.nodes.some(
-          (shopifyVariant) =>
-            shopifyVariant.id === variant.shopifyVariantStorefrontId,
-        ),
-    )
-    .flatMap(({ platformProductVariants }) =>
-      platformProductVariants.filter(
-        ({ platform }) => platform === Platform.Orderchamp,
-      ),
-    );
 
   const orderchampPlatformProduct = productWithVariants.platformProducts.find(
     ({ platform }) => platform === Platform.Orderchamp,
   );
 
   const isProductExist = await retrieveProductByID(
-    orderchampPlatformProduct?.storefrontId || '',
+    orderchampPlatformProduct?.storefrontId || 'empty',
   );
 
+  const options = shopifyProduct.options.reduce(
+    (acc, option) => {
+      const optionLabel = `option${option.position}` as
+        | 'option1'
+        | 'option2'
+        | 'option3';
+      acc[optionLabel] = option.name;
+
+      return acc;
+    },
+    {} as {
+      option1: string;
+      option2: string;
+      option3: string;
+    },
+  );
+
+  console.log('\n\n\n\n====================');
+  console.log({ isProductExist });
+  console.log({
+    orderchampPlatformProduct: JSON.stringify(
+      orderchampPlatformProduct,
+      null,
+      2,
+    ),
+  });
+  console.log('====================\n\n\n\n');
+
   if (!isProductExist) {
-    const options = shopifyProduct.options.reduce(
-      (acc, option) => {
-        const optionLabel = `option${option.position}` as
-          | 'option1'
-          | 'option2'
-          | 'option3';
-        acc[optionLabel] = option.name;
+    const input = {
+      title: shopifyProduct.title,
+      description: shopifyProduct.descriptionHtml,
+      brand: shopifyProduct.vendor,
+      images: shopifyProduct.media.nodes.map((media) => ({
+        sourceUrl: media.preview.image.url,
+      })),
+      ...options,
+      variants: shopifyProduct.variants.nodes.map((variant) => {
+        const variantId = variant.id.replace(
+          'gid://shopify/ProductVariant/',
+          '',
+        );
 
-        return acc;
-      },
-      {} as {
-        option1: string;
-        option2: string;
-        option3: string;
-      },
-    );
+        return {
+          barcode: String(Number(variant.barcode) || variantId),
+          inventoryPolicy: variant.inventoryPolicy,
+          inventoryQuantity: variant.inventoryQuantity,
+          price: String(Math.max(Number(variant.price) || 0.01, 0.01)),
+          sku: variant.sku || `${variantId}-temp-sku`,
+          option1: variant.selectedOptions?.[0]?.value || null,
+          option2: variant.selectedOptions?.[1]?.value || null,
+          option3: variant.selectedOptions?.[2]?.value || null,
+        };
+      }),
+    };
 
-    createProduct(
-      {
-        title: shopifyProduct.title,
-        description: shopifyProduct.descriptionHtml,
-        brand: shopifyProduct.vendor,
-        images: shopifyProduct.media.nodes.map((media) => ({
-          sourceUrl: media.preview.image.url,
-        })),
-        ...options,
-        variants: shopifyProduct.variants.nodes.map((variant) => {
-          const variantId = variant.id.replace(
-            'gid://shopify/ProductVariant/',
-            '',
-          );
+    if (category) {
+      // @ts-ignore
+      input.category = category;
+    }
 
-          return {
-            barcode: String(Number(variant.barcode) || variantId),
-            inventoryPolicy: variant.inventoryPolicy,
-            inventoryQuantity: variant.inventoryQuantity,
-            price: String(Math.max(Number(variant.price) || 0.01, 0.01)),
-            sku: variant.sku || `${variantId}-temp-sku`,
-            option1: variant.selectedOptions?.[0]?.name || null,
-            option2: variant.selectedOptions?.[1]?.name || null,
-            option3: variant.selectedOptions?.[2]?.name || null,
-          };
-        }),
-      },
-      productWithVariants,
-    );
+    await createProduct(input, productWithVariants, marketplaceStorefrontLabel);
 
     return;
   }
 
-  const orderchampUpdateProductFields = generateUpdateProductFields({
-    currentPlatform: Platform.Orderchamp,
-    productFields: {
-      title: shopifyProduct.title,
-      description: shopifyProduct.descriptionHtml || '',
-      status: (orderchampPlatformProduct?.status ||
-        ProductStatus.DRAFT) as ProductStatus,
-      tags: orderchampPlatformProduct?.tags || [],
-    },
-    variantFields: productWithVariants.variants.reduce(
-      (acc, variant) => {
-        const orderchampPlatformVariant = variant.platformProductVariants.find(
-          ({ platform }) => platform === Platform.Orderchamp,
+  const shopifyProductVariants = productWithVariants.variants
+    .flatMap(({ platformProductVariants }) => platformProductVariants)
+    .filter(({ platform }) => platform === Platform.Shopify);
+
+  const orderchampProductVariants = productWithVariants.variants
+    .flatMap(({ platformProductVariants, shopifyVariantStorefrontId }) =>
+      platformProductVariants.map((variant) => ({
+        ...variant,
+        shopifyVariantStorefrontId,
+      })),
+    )
+    .filter(({ platform }) => platform === Platform.Orderchamp);
+
+  const productFields = {
+    id: orderchampPlatformProduct?.id || 'empty',
+    category,
+    storefrontId: orderchampPlatformProduct?.storefrontId || 'empty',
+    title: shopifyProduct.title,
+    description: shopifyProduct.descriptionHtml || '',
+    status: (orderchampPlatformProduct?.status ||
+      ProductStatus.DRAFT) as ProductStatus,
+    tags: orderchampPlatformProduct?.tags || [],
+    ...options,
+  };
+
+  const variantFields = shopifyProduct.variants.nodes.map((variant, idx) => ({
+    msrp: String(Math.max(Number(variant.msrp || variant.price), 0.01)),
+    parentVariantId:
+      shopifyProductVariants.find(
+        (shopifyVariant) => shopifyVariant.storefrontId === variant.id,
+      )?.productVariantId || '',
+    id: variant.id,
+    storefrontId:
+      orderchampProductVariants.find(
+        ({ shopifyVariantStorefrontId }) =>
+          shopifyVariantStorefrontId === variant.id,
+      )?.storefrontId || '',
+    inventoryQuantity: variant.inventoryQuantity,
+    inventoryPolicy: variant.inventoryPolicy.toUpperCase() as InventoryPolicy,
+    title: variant.title,
+    option1:
+      variant.selectedOptions.find((selectedOption) => {
+        const shopifyOption = shopifyProduct.options.find(
+          (option) => option.position === 1,
         );
 
-        const shopifyProductVariant = shopifyProduct.variants.nodes.find(
-          ({ id }) => id === variant.shopifyVariantStorefrontId,
+        return selectedOption.name === shopifyOption?.name;
+      })?.value || null,
+    option2:
+      variant.selectedOptions.find((selectedOption) => {
+        const shopifyOption = shopifyProduct.options.find(
+          (option) => option.position === 2,
         );
 
-        if (orderchampPlatformVariant) {
-          const variantId = variant.shopifyVariantStorefrontId.replace(
-            'gid://shopify/ProductVariant/',
-            '',
-          );
+        return selectedOption.name === shopifyOption?.name;
+      })?.value || null,
+    option3:
+      variant.selectedOptions.find((selectedOption) => {
+        const shopifyOption = shopifyProduct.options.find(
+          (option) => option.position === 3,
+        );
 
-          acc[orderchampPlatformVariant.id] = {
-            barcode: shopifyProductVariant?.barcode || variantId,
-            price: shopifyProductVariant?.price || '0.01',
-            sku: variant?.sku || `${variantId}-temp-sku`,
-          };
-        }
+        return selectedOption.name === shopifyOption?.name;
+      })?.value || null,
+    barcode:
+      variant.barcode ||
+      variant.id.replace('gid://shopify/ProductVariant/', ''),
+    price: String(Math.max(+variant.price || 0, 0.01)),
+    sku:
+      variant.sku ||
+      `${variant.id.replace('gid://shopify/ProductVariant/', '')}-temp-sku`,
+    createdAt: variant.createdAt,
+    updatedAt: variant.updatedAt,
+  }));
 
-        return acc;
-      },
-      {} as ProductUpdateFields['variantFields'],
-    ),
-    product: productWithVariants,
-  });
+  const preparedImages = !shopifyProduct.media.nodes.length
+    ? [{ id: '' }]
+    : shopifyProduct.media.nodes.map(({ preview }) => ({
+        sourceUrl: preview.image.url,
+      }));
 
-  const orderchampProductVariants = productWithVariants.variants.flatMap(
-    (variant) =>
-      variant.platformProductVariants
-        .map((platformVariant) => ({
-          ...platformVariant,
-          shopifyVariantStorefrontId: variant.shopifyVariantStorefrontId,
-        }))
-        .filter(
-          (platformVariant) => platformVariant.platform === Platform.Orderchamp,
-        ),
-  );
-
-  const newOrderchampVariants = shopifyProduct.variants.nodes.filter(
-    (shopifyVariant) =>
-      orderchampProductVariants.every(
-        (variant) => variant.shopifyVariantStorefrontId !== shopifyVariant.id,
-      ),
-  );
-
-  for (const newVariant of newOrderchampVariants) {
-    const parentVariantId =
-      productWithVariants.variants.find(
-        (variant) => variant.shopifyVariantStorefrontId === newVariant.id,
-      )?.id || '';
-
-    const variantId = newVariant.id.replace(
-      'gid://shopify/ProductVariant/',
-      '',
-    );
-
-    await createProductVariant(
-      {
-        inventoryPolicy:
-          newVariant.inventoryPolicy.toUpperCase() as InventoryPolicy,
-        barcode: newVariant.barcode || variantId,
-        sku: newVariant.sku || `${variantId}-temp-sku`,
-        price: newVariant.price || '0.01',
-        inventoryQuantity: newVariant.inventoryQuantity,
-        option1: newVariant.selectedOptions?.[0]?.value || null,
-        option2: newVariant.selectedOptions?.[1]?.value || null,
-        option3: newVariant.selectedOptions?.[2]?.value || null,
-        productId: orderchampUpdateProductFields.productFields.storefrontId,
-      },
-      parentVariantId,
-    );
-  }
+  console.log('=============');
+  console.log({ productFields: JSON.stringify(productFields, null, 2) });
+  console.log({ variantFields: JSON.stringify(variantFields, null, 2) });
+  console.log({ preparedImages: JSON.stringify(preparedImages, null, 2) });
+  console.log('=============');
 
   await updateProduct(
-    orderchampUpdateProductFields,
-    shopifyProduct.media.nodes.map(({ preview }) => ({
-      sourceUrl: preview.image.url,
-    })),
+    { productFields, variantFields },
+    preparedImages,
+    marketplaceStorefrontLabel,
   );
 }

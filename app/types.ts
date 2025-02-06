@@ -43,6 +43,29 @@ export enum ProductStatusFilter {
   Archive = 'Archive',
 }
 
+export enum OrderPaymentStatus {
+  AUTHORIZED = 'AUTHORIZED',
+  EXPIRED = 'EXPIRED',
+  PAID = 'PAID',
+  PARTIALLY_PAID = 'PARTIALLY_PAID',
+  PARTIALLY_REFUNDED = 'PARTIALLY_REFUNDED',
+  PENDING = 'PENDING',
+  REFUNDED = 'REFUNDED',
+  VOIDED = 'VOIDED',
+}
+
+export enum OrderFulfillmentStatus {
+  FULFILLED = 'FULFILLED',
+  IN_PROGRESS = 'IN_PROGRESS',
+  ON_HOLD = 'ON_HOLD',
+  OPEN = 'OPEN',
+  PARTIALLY_FULFILLED = 'PARTIALLY_FULFILLED',
+  PENDING_FULFILLMENT = 'PENDING_FULFILLMENT',
+  RESTOCKED = 'RESTOCKED',
+  SCHEDULED = 'SCHEDULED',
+  UNFULFILLED = 'UNFULFILLED',
+}
+
 export enum Platform {
   Shopify = 'Shopify',
   Orderchamp = 'Orderchamp',
@@ -61,6 +84,17 @@ export enum ProductFilterOption {
   UpdatedAt = 'updatedAt',
 }
 
+export enum OrderFilterOption {
+  Query = 'query',
+  LineItemsCount = 'lineItemsCount',
+  TotalPrice = 'totalPrice',
+  Platform = 'platform',
+  PaymentStatus = 'paymentStatus',
+  FulfillmentStatus = 'fulfillmentStatus',
+  CreatedAt = 'createdAt',
+  UpdatedAt = 'updatedAt',
+}
+
 export enum ProductSortOptionLabel {
   Title = 'Title',
   Category = 'Category',
@@ -73,6 +107,22 @@ export enum ProductSortOptionValue {
   Title = 'title',
   Category = 'category',
   TotalInventory = 'totalInventory',
+  CreatedAt = 'createdAt',
+  UpdatedAt = 'updatedAt',
+}
+
+export enum OrderSortOptionLabel {
+  Name = 'Name',
+  LineItemsCount = 'Items Count',
+  TotalPrice = 'Total Price',
+  CreatedAt = 'Created Date',
+  UpdatedAt = 'Updated Date',
+}
+
+export enum OrderSortOptionValue {
+  Name = 'name',
+  LineItemsCount = 'lineItemsCount',
+  TotalPrice = 'totalPrice',
   CreatedAt = 'createdAt',
   UpdatedAt = 'updatedAt',
 }
@@ -157,3 +207,9 @@ export type PlatformProductVariantProductFields = Prisma.ProductScalarFieldEnum;
 export type ProductOrderBy =
   | Prisma.PlatformProductOrderByWithRelationInput
   | Prisma.PlatformProductOrderByWithRelationInput[];
+
+export type OrderWhereInput = Prisma.OrderWhereInput;
+
+export type OrderOrderBy =
+  | Prisma.OrderOrderByWithRelationInput
+  | Prisma.OrderOrderByWithRelationInput[];

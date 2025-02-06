@@ -17,8 +17,10 @@ import { useAppBridge } from '@shopify/app-bridge-react';
 
 import { authenticate } from '@/shopify.server';
 import * as shopifyProductsService from '@/services/shopify/products.server';
+import * as faireProductsService from '@/services/faire/products.server';
 import { syncProducts } from '@/services/sync-products.server';
 import { seedProducts } from '@/services/seed-products.server';
+import { seedOrders } from '@/services/seed-orders.server';
 import { handleApiResponse } from '@/utils/api-response-handler';
 import { createNewProductUrl } from '@/utils/create-new-product-url';
 import { getPaginatedProducts } from '@/api/products';
@@ -84,6 +86,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       await shopifyProductsService.importShopifyProducts(shopifyProducts, shop);
 
       await seedProducts(shop);
+      await seedOrders(admin.graphql, shop);
 
       const productData = await getPaginatedProducts(shop, {
         filter: { platform: Platform.Shopify },

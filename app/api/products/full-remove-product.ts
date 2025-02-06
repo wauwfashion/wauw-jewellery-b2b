@@ -2,6 +2,7 @@ import { AdminApiContextWithoutRest } from 'node_modules/@shopify/shopify-app-re
 
 import * as shopifyProductService from '@/services/shopify/products.server';
 import * as orderchampProductService from '@/services/orderchamp/products.server';
+import * as faireProductService from '@/services/faire/products.server';
 
 import prisma from '@/db.server';
 import { Platform } from '@/types';
@@ -47,6 +48,7 @@ export async function fullRemoveProduct(
       storefrontIdsByPlatform?.[Platform.Shopify] || '';
     const orderchampStorefrontId =
       storefrontIdsByPlatform?.[Platform.Orderchamp] || '';
+    const faireStorefrontId = storefrontIdsByPlatform?.[Platform.Faire] || '';
 
     await prisma.$transaction(async (tx) => {
       const variantIds = product.variants.map(({ id }) => id);
@@ -80,7 +82,9 @@ export async function fullRemoveProduct(
       graphqlClient,
       shopifyStorefrontId,
     );
+
     await orderchampProductService.removeProduct(orderchampStorefrontId);
+    await faireProductService.removeProduct(faireStorefrontId);
   } catch (err) {
     console.log('An error occurred while delete product: ', err);
   }
