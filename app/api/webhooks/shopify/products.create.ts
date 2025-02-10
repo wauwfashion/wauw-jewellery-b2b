@@ -188,11 +188,17 @@ const action: WebhookHandler = async ({ webhookContext, request }) => {
     }
 
     if (platformMetadata.includes(Platform.Faire)) {
+      const productCategory = (metafields[Metafield.FaireCategory] || [])?.[0];
+
       const input: CreateFaireProductInput = {
         name: shopifyProduct.title,
         description: escapeHTML(shopifyProduct.body_html),
         idempotence_token: shopifyProduct.admin_graphql_api_id,
-        lifecycle_state: 'PUBLISHED',
+        lifecycle_state:
+          shopifyProduct.status === ProductStatus.ACTIVE &&
+          shopifyProduct.images.length > 0
+            ? 'PUBLISHED'
+            : 'DRAFT',
         minimum_order_quantity: 1,
         unit_multiplier: 1,
         images: shopifyProduct.images.map((image) => ({
@@ -226,7 +232,7 @@ const action: WebhookHandler = async ({ webhookContext, request }) => {
 
               return {
                 name,
-                value: variant[optionKey],
+                value,
               };
             })
             .filter(Boolean) as FaireProductVariantOption[];
@@ -266,9 +272,16 @@ const action: WebhookHandler = async ({ webhookContext, request }) => {
               },
             ],
             options,
+            available_quantity: variant.inventory_quantity,
           };
         }),
       };
+
+      if (productCategory) {
+        input.taxonomy_type = {
+          id: productCategory,
+        };
+      }
 
       await faireProductService.createProduct(input, productWithVariants);
     }

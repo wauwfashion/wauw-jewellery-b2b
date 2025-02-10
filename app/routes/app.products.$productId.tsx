@@ -25,6 +25,7 @@ import _ from 'lodash';
 import * as shopifyProductTagsService from '@/services/shopify/tags.server';
 import * as shopifyProductsService from '@/services/shopify/products.server';
 import * as orderchampProductsService from '@/services/orderchamp/products.server';
+import * as faireProductsService from '@/services/faire/products.server';
 import { fullRemoveProduct } from '@/api/products/full-remove-product';
 import {
   ProductUpdateFields,
@@ -153,11 +154,22 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
             },
           });
 
+          // const { metafields, platformPrice } =
+          //   await shopifyProductsService.retrieveMetafields(
+          //     admin?.graphql!,
+          //     product?.shopifyStorefrontId || '',
+          //     Object.keys(Metafield),
+          //   );
+
           const updateProductData = prepareUpdateProductFields({
             currentPlatform: currentPlatform as Platform,
             product,
             productFields,
             variantFields,
+          });
+
+          console.log({
+            product: JSON.stringify(product, null, 2),
           });
 
           const updateHandlers: Record<Platform, Function> = {
@@ -168,7 +180,57 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
               ),
             [Platform.Orderchamp]: async () =>
               orderchampProductsService.updateProduct(updateProductData),
-            [Platform.Faire]: async () => {},
+            [Platform.Faire]: async () => {
+              const faireProduct = product?.platformProducts.find(
+                ({ platform }) => platform === Platform.Faire,
+              );
+
+              if (!faireProduct) {
+                return;
+              }
+
+              const variantIds = Object.keys(variantFields);
+
+              const variantsFromDB =
+                await prisma.platformProductVariant.findMany({
+                  where: {
+                    id: {
+                      in: variantIds,
+                    },
+                  },
+                });
+
+              faireProductsService.updateProduct(faireProduct.storefrontId, {
+                description: productFields.description,
+                name: productFields.title,
+                lifecycle_state:
+                  productFields.status === ProductStatus.ACTIVE
+                    ? 'PUBLISHED'
+                    : 'DRAFT',
+                variants: variantsFromDB.map((variant) => {
+                  const fields = variantFields[variant.id];
+
+                  return {
+                    prices: [
+                      {
+                        geo_constraint: {
+                          country_group: 'EUROPEAN_UNION',
+                        },
+                        wholesale_price: {
+                          currency: 'EUR',
+                          amount_minor: (Number(fields.price) || 1) * 100,
+                        },
+                        retail_price: {
+                          currency: 'EUR',
+                          amount_minor: (Number(fields.price) || 1) * 100,
+                        },
+                      },
+                    ],
+                    sku: fields.sku!,
+                  };
+                }),
+              });
+            },
             [Platform.Ankorstore]: async () => {},
           };
 
@@ -535,7 +597,10 @@ export default function ProductDetailsPage() {
         loading: isLoading,
         accessibilityLabel: 'Save action label',
         helpText: 'Save',
-        disabled: !isDirtyForm || hasFormErrors,
+        disabled:
+          !isDirtyForm ||
+          hasFormErrors ||
+          currentPlatform === Platform.Ankorstore,
         onAction: handleUpdateProduct,
       }}
       secondaryActions={[
@@ -543,14 +608,17 @@ export default function ProductDetailsPage() {
           content: 'Delete',
           icon: DeleteIcon,
           destructive: true,
-          disabled: isLoading,
+          disabled: isLoading || currentPlatform === Platform.Ankorstore,
           accessibilityLabel: 'Open delete modal action label',
           onAction: handleOpenRemoveModal,
         },
         {
           content: 'Discard',
           icon: RefreshIcon,
-          disabled: isLoading || !isDirtyForm,
+          disabled:
+            isLoading ||
+            !isDirtyForm ||
+            currentPlatform === Platform.Ankorstore,
           accessibilityLabel: 'Discard changes action label',
           onAction: onResetForm,
         },

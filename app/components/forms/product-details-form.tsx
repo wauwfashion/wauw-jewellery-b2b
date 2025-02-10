@@ -94,6 +94,7 @@ export const ProductDetailsForm: FC<Props> = ({
             <BlockStack gap="400">
               <FormLayout>
                 <TextField
+                  disabled={currentPlatform === Platform.Ankorstore}
                   autoComplete=""
                   label="Title"
                   requiredIndicator
@@ -102,6 +103,7 @@ export const ProductDetailsForm: FC<Props> = ({
                   {...fields.title}
                 />
                 <TextField
+                  disabled={currentPlatform === Platform.Ankorstore}
                   autoComplete=""
                   label="Description"
                   type="text"
@@ -125,6 +127,7 @@ export const ProductDetailsForm: FC<Props> = ({
                       ].sku}
                     />
                     <TextField
+                      disabled={currentPlatform === Platform.Ankorstore}
                       autoComplete=""
                       requiredIndicator
                       label="Barcode (ISBN, UPC, GTIN, etc.)"
@@ -165,6 +168,7 @@ export const ProductDetailsForm: FC<Props> = ({
                     />
                     <InlineGrid gap="400" columns={2}>
                       <TextField
+                        disabled={currentPlatform === Platform.Ankorstore}
                         autoComplete=""
                         requiredIndicator
                         label="Barcode (ISBN, UPC, GTIN, etc.)"
@@ -176,6 +180,7 @@ export const ProductDetailsForm: FC<Props> = ({
                         ].barcode}
                       />
                       <PriceInput
+                        disabled={currentPlatform === Platform.Ankorstore}
                         autoComplete=""
                         label="Price"
                         type="text"
@@ -229,6 +234,7 @@ export const ProductDetailsForm: FC<Props> = ({
                     </Bleed>
                   </Box>
                   <PriceInput
+                    disabled={currentPlatform === Platform.Ankorstore}
                     autoComplete=""
                     label="Price"
                     type="text"

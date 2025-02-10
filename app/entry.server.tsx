@@ -7,6 +7,9 @@ import {
 } from '@remix-run/node';
 import { isbot } from 'isbot';
 import { addDocumentResponseHeaders } from './shopify.server';
+import { startCronSync } from './services/cron.server';
+
+startCronSync();
 
 export const streamTimeout = 5000;
 

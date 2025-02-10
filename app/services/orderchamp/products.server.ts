@@ -122,6 +122,77 @@ export async function retrieveProductByID(id: string) {
   }
 }
 
+export async function retrieveProductVariantByID(id: string) {
+  try {
+    const query = gql`
+      query ProductVariant($id: ID!) {
+        productVariant(id: $id) {
+          id
+          sku
+          inventoryQuantity
+        }
+      }
+    `;
+
+    const { data } = (await orderchampGraphqlClient.rawRequest(query, {
+      id: id || 'empty',
+    })) as {
+      data: {
+        productVariant: {
+          id: string;
+          sku: string;
+          inventoryQuantity: number;
+        } | null;
+      };
+    };
+
+    return data?.productVariant;
+  } catch (err) {
+    throw err;
+  }
+}
+
+export async function updateProductVariantQuantity(
+  id: string,
+  quantity: number,
+) {
+  try {
+    const query = gql`
+      mutation ProductQuantityUpdate($id: ID!, $inventoryQuantity: Int!) {
+        productVariantUpdate(
+          input: { id: $id, inventoryQuantity: $inventoryQuantity }
+        ) {
+          productVariant {
+            id
+            sku
+            inventoryQuantity
+          }
+          userErrors {
+            field
+            message
+          }
+        }
+      }
+    `;
+
+    const { data } = (await orderchampGraphqlClient.rawRequest(query, {
+      id: id || 'empty',
+    })) as {
+      data: {
+        productVariant: {
+          id: string;
+          sku: string;
+          inventoryQuantity: number;
+        } | null;
+      };
+    };
+
+    return data?.productVariant;
+  } catch (err) {
+    throw err;
+  }
+}
+
 export async function retrieveAllProducts(): Promise<OrderchampProduct[]> {
   try {
     const limit = 10;
@@ -340,10 +411,6 @@ export async function updateProduct(
     if (category) {
       input.category = category;
     }
-
-    console.log({
-      updateOrderchampProductInput: JSON.stringify(input, null, 2),
-    });
 
     const { data } = (await orderchampGraphqlClient.rawRequest(doc, {
       input,
@@ -799,7 +866,7 @@ export async function syncProduct(
   console.log('====================\n\n\n\n');
 
   if (!isProductExist) {
-    const input = {
+    const input: CreateProductInput = {
       title: shopifyProduct.title,
       description: shopifyProduct.descriptionHtml,
       brand: shopifyProduct.vendor,
@@ -816,6 +883,7 @@ export async function syncProduct(
         return {
           barcode: String(Number(variant.barcode) || variantId),
           inventoryPolicy: variant.inventoryPolicy,
+          msrp: variant.msrp || variant.price || '0.01',
           inventoryQuantity: variant.inventoryQuantity,
           price: String(Math.max(Number(variant.price) || 0.01, 0.01)),
           sku: variant.sku || `${variantId}-temp-sku`,

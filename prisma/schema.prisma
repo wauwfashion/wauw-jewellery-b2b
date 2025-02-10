@@ -3,9 +3,9 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
-  // directUrl = env("DIRECT_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 model Session {
@@ -145,6 +145,7 @@ model Order {
   id                String                 @id @default(uuid())
   name              String
   customer          String
+  storeDomain       String                 @map("store_domain")
   totalPrice        Decimal                @map("total_price")
   currencyCode      String                 @map("currency_code")
   storefrontId      String                 @unique @map("storefront_id")

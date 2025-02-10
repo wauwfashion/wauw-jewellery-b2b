@@ -1,9 +1,11 @@
 import * as shopifyProductsService from '@/services/shopify/products.server';
 import * as orderchampProductsService from '@/services/orderchamp/products.server';
+import * as faireProductsService from '@/services/faire/products.server';
 import prisma from '@/db.server';
 import { AdminApiContextWithoutRest } from 'node_modules/@shopify/shopify-app-remix/dist/ts/server/clients';
 import { Platform } from '@/types';
 import { Metafield } from './shopify/types';
+import { updateProductsQuantity } from './cron.server';
 
 export const syncProducts = async (
   graphqlClient: AdminApiContextWithoutRest['graphql'],
@@ -179,7 +181,29 @@ export const syncProducts = async (
           marketplaceStorefront,
         );
       }
+
+      if (platformMetadata.includes(Platform.Faire)) {
+        const productCategory = (metafields[Metafield.FaireCategory] ||
+          [])?.[0];
+
+        const mappedProductVariants = product.variants.nodes.map((variant) => ({
+          ...variant,
+          msrp: String(+variant.price || 0.01),
+          price: String(+platformPrice || +variant.price || 0.01),
+        }));
+
+        const mappedProduct = {
+          ...product,
+          variants: {
+            nodes: mappedProductVariants,
+          },
+        };
+
+        await faireProductsService.syncProduct(mappedProduct, productCategory);
+      }
     }
+
+    await updateProductsQuantity(type);
 
     await prisma.store.update({
       where: {

@@ -3,6 +3,7 @@ import { mapPlatformProducts } from '@/utils/map-platform-products';
 import { generateProductsSkuMap } from '@/utils/generate-products-sku-map';
 import * as orderchampProductsService from '@/services/orderchamp/products.server';
 import * as faireProductsService from '@/services/faire/products.server';
+import * as ankorstoreProductsService from '@/services/ankorstore/products.server';
 import prisma from '@/db.server';
 
 export const seedProducts = async (storeDomain: string) => {
@@ -44,6 +45,8 @@ export const seedProducts = async (storeDomain: string) => {
       allFaireProducts,
       productsSkuMap,
     );
+
+    await ankorstoreProductsService.importProducts();
   } catch (err) {
     throw err;
   }

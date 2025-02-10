@@ -10,6 +10,8 @@ import {
 import { Platform, UserError } from '@/types';
 import prisma from '@/db.server';
 import { ProductUpdateFieldsWithId } from '@/hooks/use-product-form-fields';
+import { gql } from 'graphql-request';
+import { shopifyGraphqlClient } from './graphql-client';
 
 export async function retrieveChunkOfProducts(
   graphqlClient: AdminApiContextWithoutRest['graphql'],
@@ -382,41 +384,54 @@ export async function updateProduct(
   }
 }
 
-export async function updateProductQuantity(
-  graphqlClient: AdminApiContextWithoutRest['graphql'],
-  {
-    productId = 'empty',
-    variants,
-  }: {
-    productId: string;
-    variants: {
-      id: string;
-      quantity: number;
-    }[];
-  },
-) {
-  const locationsRes = await graphqlClient(
-    `#graphql
-      query Locations($first: Int!) {
-        locations(first: $first) {
-          nodes {
-            id
-            name
-            isActive
-          }
+export async function retrieveProductVariantByID(id: string) {
+  const doc = gql`
+    query ProductVariant($id: String!) {
+      query {
+        productVariant(id: $id) {
+          inventoryQuantity
+          sku
+          id
         }
       }
-    `,
-    {
-      variables: {
-        first: 10,
-      },
-    },
-  );
+    }
+  `;
+
+  const { data } = (await shopifyGraphqlClient.rawRequest(doc, { id })) as {
+    data: {
+      productVariant: {
+        inventoryQuantity: number;
+        sku: string;
+        id: string;
+        inventoryItem: {
+          id: string;
+        };
+      };
+    };
+  };
+
+  return data?.productVariant;
+}
+
+export async function updateProductQuantity(
+  inventoryItemId: string,
+  delta: number,
+) {
+  const locationsDoc = gql`
+    query Locations($first: Int!) {
+      locations(first: $first) {
+        nodes {
+          id
+          name
+          isActive
+        }
+      }
+    }
+  `;
 
   const {
     data: { locations },
-  } = (await locationsRes.json()) as {
+  } = (await shopifyGraphqlClient.rawRequest(locationsDoc, { first: 10 })) as {
     data: {
       locations: {
         nodes: {
@@ -440,50 +455,27 @@ export async function updateProductQuantity(
     activeLocations.find((location) => location.name === 'Lireweg 8') ||
     activeLocations[0];
 
-  const mappedVariantsInput = variants.map((variant) => ({
-    id: variant.id,
-    inventoryQuantities: [
-      {
-        locationId: currentLocation.id,
-        availableQuantity: variant.quantity,
-      },
-    ],
-  }));
-
-  const updateProductQuantityRes = await graphqlClient(
-    `#graphql
-      mutation ProductQuantityUpdate($variants: [ProductVariantBulkInput!]!, $productId: ID!) {
-        productVariantsBulkUpdate(variants: $variants, productId: $productId) {
-          userErrors {
-            field
-            message
-          }
+  const updateInventoryItemDoc = gql`
+    mutation ProductQuantityUpdate($changes: [InventoryChangeInput!]!) {
+      inventoryAdjustQuantities(
+        input: { reason: "correction", name: "available", changes: $changes }
+      ) {
+        inventoryAdjustmentGroup {
+          id
         }
       }
-    `,
-    {
-      variables: {
-        productId,
-        variants: mappedVariantsInput,
+    }
+  `;
+
+  await shopifyGraphqlClient.rawRequest(updateInventoryItemDoc, {
+    changes: [
+      {
+        inventoryItemId,
+        locationId: currentLocation.id,
+        delta,
       },
-    },
-  );
-
-  const {
-    data: { productVariantsBulkUpdate },
-  } = (await updateProductQuantityRes.json()) as {
-    data: {
-      productVariantsBulkUpdate: {
-        userErrors: UserError[];
-      };
-    };
-  };
-
-  const userErrors = productVariantsBulkUpdate.userErrors;
-
-  if (userErrors.length > 0) {
-    throw userErrors[0].message;
-  }
+    ],
+  });
 }
 
 export async function retrieveMetafields(
@@ -553,6 +545,9 @@ export async function retrieveMetafields(
   const metafields = product?.metafields?.nodes || [];
 
   const metafieldRecords: Partial<Record<Metafield, string[]>> = {};
+  // const metafieldRecords: Partial<
+  //   Record<Metafield, { label: string; value: string }[]>
+  // > = {};
 
   for (const metafield of metafields) {
     const ids =
@@ -567,13 +562,16 @@ export async function retrieveMetafields(
 
       const metafieldRes = await graphqlClient(
         `#graphql
-        query ProductMetafield($id: ID!, $fieldKey: String!) {
+        query ProductMetafield($id: ID!, $slugKey: String!, $uidKey: String!) {
           metaobject(id: $id) {
             displayName
             id
             type
             handle
-            slug: field(key: $fieldKey) {
+            slug: field(key: $slugKey) {
+              jsonValue
+            }
+            uid: field(key: $uidKey) {
               jsonValue
             }
           }
@@ -582,7 +580,8 @@ export async function retrieveMetafields(
         {
           variables: {
             id: metafieldId,
-            fieldKey: 'slug',
+            slugKey: 'slug',
+            uidKey: 'uid',
           },
         },
       );
@@ -599,6 +598,9 @@ export async function retrieveMetafields(
             slug: {
               jsonValue: string;
             } | null;
+            uid: {
+              jsonValue: string;
+            } | null;
           };
         };
       };
@@ -610,7 +612,9 @@ export async function retrieveMetafields(
       metafieldRecords[metaKey as Metafield] ??= [];
 
       metafieldRecords[metaKey as Metafield]?.push(
-        metaobject.slug?.jsonValue || metaobject.displayName,
+        metaobject.slug?.jsonValue ||
+          metaobject.uid?.jsonValue ||
+          metaobject.displayName,
       );
     }
   }
@@ -619,161 +623,3 @@ export async function retrieveMetafields(
 
   return { metafields: metafieldRecords, platformPrice };
 }
-
-// export async function retrieveMetafields(
-//   graphqlClient: AdminApiContextWithoutRest['graphql'],
-//   productId: string,
-//   productKeys: string[],
-// ) {
-//   const [msrpNamespace, msrpKey] = Metafield.OrderchampMSRP.split('.');
-
-//   const productRes = await graphqlClient(
-//     `#graphql
-//     query ProductMetafields($id: ID!, $first: Int!, $productKeys: [String!], $msrpNamespace: String!, $msrpKey: String!) {
-//       product(id: $id) {
-//         metafields(first: $first, keys: $productKeys) {
-//           nodes {
-//             id
-//             jsonValue
-//             namespace
-//             type
-//             key
-//           }
-//         }
-//         variants(first: 100) {
-//           nodes {
-//             id
-//             metafield(namespace: $msrpNamespace, key: $msrpKey) {
-//               jsonValue
-//               id
-//               namespace
-//               type
-//               key
-//             }
-//           }
-//         }
-//       }
-//     }
-//     `,
-//     {
-//       variables: {
-//         id: productId,
-//         first: 10,
-//         productKeys,
-//         msrpNamespace,
-//         msrpKey,
-//       },
-//     },
-//   );
-
-//   const {
-//     data: { product },
-//   } = (await productRes.json()) as {
-//     data: {
-//       product: {
-//         variants: {
-//           nodes: {
-//             id: string;
-//             metafield: {
-//               id: string;
-//               jsonValue: string;
-//               namespace: string;
-//               type: string;
-//               key: string;
-//             } | null;
-//           }[];
-//         };
-//         metafields: {
-//           nodes: {
-//             id: string;
-//             jsonValue: string | string[];
-//             namespace: string;
-//             type: string;
-//             key: string;
-//           }[];
-//         };
-//       };
-//     };
-//   };
-
-//   const msrpByVariants = product?.variants?.nodes.reduce(
-//     (acc, variant) => {
-//       if (!variant.id) {
-//         return acc;
-//       }
-
-//       // @ts-ignore
-//       acc[variant.id as string] = variant?.metafield?.jsonValue;
-
-//       return acc;
-//     },
-//     {} as Record<string, string>,
-//   );
-
-//   const metafields = product?.metafields?.nodes || [];
-
-//   const metafieldRecords: Partial<Record<Metafield, string[]>> = {};
-
-//   for (const metafield of metafields) {
-//     const ids =
-//       typeof metafield.jsonValue === 'string'
-//         ? [metafield.jsonValue]
-//         : metafield.jsonValue;
-
-//     for (const metafieldId of ids) {
-//       if (!metafieldId) {
-//         continue;
-//       }
-
-//       const metafieldRes = await graphqlClient(
-//         `#graphql
-//         query ProductMetafield($id: ID!, $fieldKey: String!) {
-//           metaobject(id: $id) {
-//             displayName
-//             id
-//             type
-//             handle
-//             slug: field(key: $fieldKey) {
-//               jsonValue
-//             }
-//           }
-//         }
-//         `,
-//         {
-//           variables: {
-//             id: metafieldId,
-//             fieldKey: 'slug',
-//           },
-//         },
-//       );
-
-//       const {
-//         data: { metaobject },
-//       } = (await metafieldRes.json()) as {
-//         data: {
-//           metaobject: {
-//             displayName: string;
-//             id: string;
-//             type: string;
-//             handle: string;
-//             slug: {
-//               jsonValue: string;
-//             } | null;
-//           };
-//         };
-//       };
-
-//       const metaKey = metafield.key.includes('custom')
-//         ? metafield.key
-//         : `${metafield.namespace}.${metafield.key}`;
-
-//       metafieldRecords[metaKey as Metafield] ??= [];
-
-//       metafieldRecords[metaKey as Metafield]?.push(
-//         metaobject.slug?.jsonValue || metaobject.displayName,
-//       );
-//     }
-//   }
-
-//   return { metafields: metafieldRecords, msrpByVariants };
-// }

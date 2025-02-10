@@ -78,7 +78,7 @@ export interface CreateProductInput {
   title: string;
   description?: string;
   brand: string;
-  category?: string | null;
+  category?: string;
   images?: { sourceUrl: string }[];
   option1: string | null;
   option2: string | null;

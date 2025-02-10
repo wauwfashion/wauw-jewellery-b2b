@@ -65,7 +65,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         },
       });
 
-      await seedOrders(admin.graphql, shop);
+      await seedOrders(shop);
 
       const ordersData = await getPaginatedOrders({
         filter: { platform: Platform.Shopify },

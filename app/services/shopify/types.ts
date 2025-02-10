@@ -51,7 +51,7 @@ export interface ShopifyProduct {
   variantsCount: {
     count: number;
   };
-  options: { name: string; position: number }[];
+  options: { name: string; position: number; values: string[] }[];
   variants: {
     nodes: ShopifyProductVariant[];
   };
@@ -187,6 +187,7 @@ export enum Metafield {
   Platforms = 'custom.platforms',
   OrderchampMarketplace = 'custom.orderchamp_marketplace',
   OrderchampProductCategory = 'custom.orderchamp_category',
+  FaireCategory = 'custom.faire_category',
   // OrderchampMSRP = 'custom.orderchamp_msrp',
   // PlatformPrice = 'custom.platform_price',
 }

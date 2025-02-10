@@ -6,63 +6,61 @@ import {
   ShopifyOrdersResponse,
   ShopifyQueryCost,
 } from '@/services/shopify/types';
+import { gql } from 'graphql-request';
+import { shopifyGraphqlClient } from './graphql-client';
 
-export async function retrieveChunkOfOrders(
-  graphqlClient: AdminApiContextWithoutRest['graphql'],
-  {
-    first,
-    afterCursor,
-    query,
-  }: { first: number; afterCursor?: string; query?: string },
-): Promise<{
+export async function retrieveChunkOfOrders({
+  first,
+  afterCursor,
+  query,
+}: {
+  first: number;
+  afterCursor?: string;
+  query?: string;
+}): Promise<{
   orders: ShopifyOrdersResponse;
   cost: ShopifyQueryCost;
 }> {
   try {
-    const res = await graphqlClient(
-      `#graphql
-        query Orders($first: Int!, $afterCursor: String, $query: String) {
-          orders(first: $first, after: $afterCursor, query: $query) {
-            nodes {
-              id
-              name
-              customer {
-                email
-              }
-              confirmed
-              fullyPaid
-              currentTotalPriceSet {
-                shopMoney {
-                  amount
-                  currencyCode
-                }
-              }
-              displayFulfillmentStatus
-              displayFinancialStatus
-              tags
-              subtotalLineItemsQuantity
-              createdAt
-              updatedAt
+    const doc = gql`
+      query Orders($first: Int!, $afterCursor: String, $query: String) {
+        orders(first: $first, after: $afterCursor, query: $query) {
+          nodes {
+            id
+            name
+            customer {
+              email
             }
-            pageInfo {
-              startCursor
-              endCursor
-              hasNextPage
-              hasPreviousPage
+            confirmed
+            fullyPaid
+            currentTotalPriceSet {
+              shopMoney {
+                amount
+                currencyCode
+              }
             }
+            displayFulfillmentStatus
+            displayFinancialStatus
+            tags
+            subtotalLineItemsQuantity
+            createdAt
+            updatedAt
+          }
+          pageInfo {
+            startCursor
+            endCursor
+            hasNextPage
+            hasPreviousPage
           }
         }
-      `,
-      {
-        variables: {
-          first,
-          afterCursor,
-          query,
-        },
-      },
-    );
+      }
+    `;
 
-    const { data, extensions } = (await res.json()) as {
+    const { data, extensions } = (await shopifyGraphqlClient.rawRequest(doc, {
+      first,
+      afterCursor,
+      query,
+    })) as {
       data: { orders: ShopifyOrdersResponse };
       extensions: {
         cost: ShopifyQueryCost;
@@ -79,7 +77,6 @@ export async function retrieveChunkOfOrders(
 }
 
 export async function retrieveAllOrders(
-  graphqlClient: AdminApiContextWithoutRest['graphql'],
   query?: string,
 ): Promise<ShopifyOrder[]> {
   try {
@@ -89,7 +86,7 @@ export async function retrieveAllOrders(
     let ordersData: ShopifyOrder[] = [];
 
     while (hasNextPage) {
-      const { orders, cost } = await retrieveChunkOfOrders(graphqlClient, {
+      const { orders, cost } = await retrieveChunkOfOrders({
         first: limit,
         afterCursor,
         query,

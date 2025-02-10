@@ -92,10 +92,10 @@ const action = async ({ request }: ActionFunctionArgs) => {
     });
   }
 
-  await shopifyProductService.updateProductQuantity(admin.graphql, {
-    productId: updatedProduct.product.shopifyStorefrontId,
-    variants: shopifyVariants,
-  });
+  // await shopifyProductService.updateProductQuantity(admin.graphql, {
+  //   productId: updatedProduct.product.shopifyStorefrontId,
+  //   variants: shopifyVariants,
+  // });
 
   return new Response();
 };

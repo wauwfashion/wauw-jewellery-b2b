@@ -8,6 +8,7 @@ import {
 } from '@/services/shopify/types';
 import * as orderchampProductService from '@/services/orderchamp/products.server';
 import * as shopifyProductService from '@/services/shopify/products.server';
+import * as faireProductService from '@/services/faire/products.server';
 import {
   InventoryPolicy,
   Platform,
@@ -239,9 +240,10 @@ const action: WebhookHandler = async ({ webhookContext, request }) => {
       id: shopifyProduct.category.admin_graphql_api_id,
       name: shopifyProduct.category.name,
     },
-    options: shopifyProduct.options.map(({ name, position }) => ({
+    options: shopifyProduct.options.map(({ name, position, values }) => ({
       name,
       position,
+      values,
     })),
     descriptionHtml: escapeHTML(shopifyProduct.body_html),
     hasOnlyDefaultVariant: shopifyProduct.variants.length === 1,
@@ -372,6 +374,15 @@ const action: WebhookHandler = async ({ webhookContext, request }) => {
     //   //   });
     //   // }
     // });
+  }
+
+  if (platformMetadata.includes(Platform.Faire)) {
+    const productCategory = (metafields[Metafield.FaireCategory] || [])?.[0];
+
+    await faireProductService.syncProduct(
+      mappedShopifyProduct,
+      productCategory,
+    );
   }
 
   return new Response();
