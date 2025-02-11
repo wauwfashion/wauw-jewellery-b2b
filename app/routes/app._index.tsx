@@ -229,12 +229,12 @@ export default function ProductsPage() {
     return {
       page,
       visibleCount,
-      hasNext: hasNextPage,
-      hasPrevious: page > 1,
+      hasNext: hasNextPage && !isLoading,
+      hasPrevious: page > 1 && !isLoading,
       onNext: onNextPage,
       onPrevious: onPrevPage,
     };
-  }, [preparedData, visibleCount, page]);
+  }, [preparedData, visibleCount, page, isLoading]);
 
   const handleFilterProducts = useCallback(
     async (

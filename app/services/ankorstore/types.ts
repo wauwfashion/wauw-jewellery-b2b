@@ -97,7 +97,7 @@ export interface AnkorstoreOrder {
             | 'RETURNED'
             | 'FAILURE';
         };
-      };
+      } | null;
       shipToAddress: {
         name: string;
       };

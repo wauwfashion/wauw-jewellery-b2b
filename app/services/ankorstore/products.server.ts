@@ -29,15 +29,12 @@ export async function retrieveProductVariantByProductName(name: string) {
 }
 
 export async function updateProductQuantity(id: string, stockQuantity: number) {
-  await ankorstoreApiClient.patch(
-    `https://www.public.ankorstore-sandbox.com/api/v1/product-variants/${id}/stock`,
-    {
-      id,
-      attributes: {
-        stockQuantity,
-      },
+  await ankorstoreApiClient.patch(`/product-variants/${id}/stock`, {
+    id,
+    attributes: {
+      stockQuantity,
     },
-  );
+  });
 }
 
 export async function importProducts() {

@@ -120,7 +120,9 @@ export async function seedOrders(store: string) {
     };
 
     const orderFulfillmentStatus: Record<
-      AnkorstoreOrder['attributes']['shippingOverview']['transaction']['currentStatus']['status'],
+      NonNullable<
+        AnkorstoreOrder['attributes']['shippingOverview']['transaction']
+      >['currentStatus']['status'],
       OrderFulfillmentStatus
     > = {
       DELIVERED: OrderFulfillmentStatus.FULFILLED,
@@ -151,7 +153,8 @@ export async function seedOrders(store: string) {
         // @ts-ignore
         fulfillmentStatus:
           orderFulfillmentStatus[
-            order.attributes.shippingOverview.transaction.currentStatus.status
+            order?.attributes?.shippingOverview?.transaction?.currentStatus
+              ?.status || 'UNKNOWN'
           ],
         paymentStatus: orderPaymentStatus[order.attributes.status],
       },

@@ -63,28 +63,34 @@ export async function updateProductsQuantity(type?: 'full' | 'part') {
             ({ platform }) => platform === Platform.Faire,
           );
 
-          const shopifyVariantData =
-            await shopifyProductService.retrieveProductVariantByID(
-              shopifyPlatformVariant?.storefrontId || '',
-            );
-          const orderchampVariantData =
-            await orderchampProductService.retrieveProductVariantByID(
-              orderchampPlatformVariant?.storefrontId || '',
-            );
-          const faireVariantData =
-            await faireProductService.retrieveProductVariantInventoryByID(
-              fairePlatformVariant?.storefrontId || '',
-            );
-          const ankorstoreVariantData =
-            await ankorstoreProductService.retrieveProductVariantByProductName(
-              variant.sku,
-            );
+          const shopifyVariantData = shopifyPlatformVariant?.storefrontId
+            ? await shopifyProductService.retrieveProductVariantByID(
+                shopifyPlatformVariant?.storefrontId || '',
+              )
+            : null;
+          const orderchampVariantData = orderchampPlatformVariant?.storefrontId
+            ? await orderchampProductService.retrieveProductVariantByID(
+                orderchampPlatformVariant?.storefrontId || '',
+              )
+            : null;
+          const faireVariantData = fairePlatformVariant?.storefrontId
+            ? await faireProductService.retrieveProductVariantInventoryByID(
+                fairePlatformVariant?.storefrontId || '',
+              )
+            : null;
+          const ankorstoreVariantData = variant.sku
+            ? await ankorstoreProductService.retrieveProductVariantByProductName(
+                variant.sku,
+              )
+            : null;
 
           const newVariantQuantity =
             (shopifyVariantData?.inventoryQuantity || 0) +
             (orderchampVariantData?.inventoryQuantity || 0) +
-            (faireVariantData[fairePlatformVariant?.storefrontId || '']
-              .available_quantity?.quantity || 0) +
+            (faireVariantData
+              ? faireVariantData[fairePlatformVariant?.storefrontId || '']
+                  .available_quantity?.quantity || 0
+              : 0) +
             (ankorstoreVariantData?.data?.[0]?.attributes?.stockQuantity || 0);
 
           const newQuantity = prevVariantQuantity * 4 - newVariantQuantity;
@@ -100,26 +106,37 @@ export async function updateProductsQuantity(type?: 'full' | 'part') {
             },
           });
 
-          await shopifyProductService.updateProductQuantity(
-            shopifyVariantData.inventoryItem.id,
-            newQuantity - shopifyVariantData.inventoryQuantity,
-          );
-          await orderchampProductService.updateProductVariantQuantity(
-            orderchampPlatformVariant?.storefrontId || '',
-            newQuantity,
-          );
-          await faireProductService.updateProductQuantity({
-            inventories: [
-              {
-                product_variant_id: fairePlatformVariant?.storefrontId || '',
-                on_hand_quantity: newQuantity,
-              },
-            ],
-          });
-          await ankorstoreProductService.updateProductQuantity(
-            ankorstoreVariantData?.data?.[0]?.id || '',
-            newQuantity,
-          );
+          if (shopifyVariantData) {
+            await shopifyProductService.updateProductQuantity(
+              shopifyVariantData.inventoryItem.id,
+              newQuantity - shopifyVariantData.inventoryQuantity,
+            );
+          }
+
+          if (orderchampPlatformVariant?.storefrontId) {
+            await orderchampProductService.updateProductVariantQuantity(
+              orderchampPlatformVariant?.storefrontId || '',
+              newQuantity,
+            );
+          }
+
+          if (fairePlatformVariant?.storefrontId) {
+            await faireProductService.updateProductQuantity({
+              inventories: [
+                {
+                  product_variant_id: fairePlatformVariant?.storefrontId || '',
+                  on_hand_quantity: newQuantity,
+                },
+              ],
+            });
+          }
+
+          if (ankorstoreVariantData?.data?.[0]?.id) {
+            await ankorstoreProductService.updateProductQuantity(
+              ankorstoreVariantData?.data?.[0]?.id || '',
+              newQuantity,
+            );
+          }
         }
 
         await prisma.product.update({
@@ -302,7 +319,9 @@ async function syncOrders() {
       };
 
       const orderFulfillmentStatus: Record<
-        AnkorstoreOrder['attributes']['shippingOverview']['transaction']['currentStatus']['status'],
+        NonNullable<
+          AnkorstoreOrder['attributes']['shippingOverview']['transaction']
+        >['currentStatus']['status'],
         OrderFulfillmentStatus
       > = {
         DELIVERED: OrderFulfillmentStatus.FULFILLED,
@@ -337,14 +356,16 @@ async function syncOrders() {
           // @ts-ignore
           fulfillmentStatus:
             orderFulfillmentStatus[
-              order.attributes.shippingOverview.transaction.currentStatus.status
+              order?.attributes?.shippingOverview?.transaction?.currentStatus
+                ?.status || 'UNKNOWN'
             ],
           paymentStatus: orderPaymentStatus[order.attributes.status],
         },
         update: {
           fulfillmentStatus:
             orderFulfillmentStatus[
-              order.attributes.shippingOverview.transaction.currentStatus.status
+              order?.attributes?.shippingOverview?.transaction?.currentStatus
+                ?.status || 'UNKNOWN'
             ],
           paymentStatus: orderPaymentStatus[order.attributes.status],
           totalPrice: Math.max(
@@ -362,5 +383,5 @@ async function syncOrders() {
 
 export function startCronSync() {
   cron.schedule('*/30 * * * *', () => updateProductsQuantity());
-  cron.schedule('* */1 * * *', () => syncOrders());
+  cron.schedule('0 * * * *', () => syncOrders());
 }
