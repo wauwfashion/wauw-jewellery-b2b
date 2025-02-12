@@ -93,7 +93,32 @@ export async function updateProductsQuantity(type?: 'full' | 'part') {
               : 0) +
             (ankorstoreVariantData?.data?.[0]?.attributes?.stockQuantity || 0);
 
-          const newQuantity = prevVariantQuantity * 4 - newVariantQuantity;
+          const newQuantity = Math.max(
+            0,
+            newVariantQuantity > 0
+              ? prevVariantQuantity * 4 - newVariantQuantity
+              : newVariantQuantity,
+          );
+
+          if (newQuantity > 100) {
+            console.log('==========================');
+            console.log({
+              variant: variant.id,
+              prevVariantQuantity,
+              newVariantQuantity,
+              shopifyVariantData: shopifyVariantData?.inventoryQuantity || 0,
+              orderchampVariantData:
+                orderchampVariantData?.inventoryQuantity || 0,
+              faireVariantData: faireVariantData
+                ? faireVariantData[fairePlatformVariant?.storefrontId || '']
+                    .available_quantity?.quantity || 0
+                : 0,
+              ankorstoreVariantData:
+                ankorstoreVariantData?.data?.[0]?.attributes?.stockQuantity ||
+                0,
+            });
+            console.log('==========================');
+          }
 
           newProductInventory += newQuantity;
 
@@ -139,18 +164,25 @@ export async function updateProductsQuantity(type?: 'full' | 'part') {
           }
         }
 
+        console.log('==========================');
+        console.log({ product: product.id, newProductInventory });
+        console.log('==========================');
+
         await prisma.product.update({
           where: {
             id: product.id,
           },
           data: {
-            totalInventory: newProductInventory,
+            totalInventory: Math.max(newProductInventory, 0),
           },
         });
       }
     }
   } catch (err) {
-    console.error('An error occurred while update products quantity: ', err);
+    console.error(
+      'An error occurred while update products quantity: ',
+      err?.message,
+    );
   }
 }
 
@@ -377,11 +409,11 @@ async function syncOrders() {
       });
     }
   } catch (err) {
-    console.error('An error occurred while sync orders: ', err);
+    console.error('An error occurred while sync orders: ', err?.message);
   }
 }
 
 export function startCronSync() {
   cron.schedule('*/30 * * * *', () => updateProductsQuantity());
-  cron.schedule('0 * * * *', () => syncOrders());
+  cron.schedule('*/30 * * * *', () => syncOrders());
 }

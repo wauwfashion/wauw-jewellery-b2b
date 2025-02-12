@@ -5,6 +5,7 @@ import {
   Metafield,
   ShopifyProduct,
   ShopifyProductsResponse,
+  ShopifyProductVariant,
   ShopifyQueryCost,
 } from '@/services/shopify/types';
 import { Platform, UserError } from '@/types';
@@ -111,7 +112,10 @@ export async function retrieveChunkOfProducts(
       cost: extensions.cost,
     };
   } catch (err) {
-    throw err;
+    console.error(
+      'An error occurred while receiving shopify products: ',
+      err?.message,
+    );
   }
 }
 
@@ -149,9 +153,14 @@ export async function retrieveAllProducts(
 
     return productsData;
   } catch (err) {
-    throw err;
+    console.error(
+      'An error occurred while receiving shopify products: ',
+      err?.message,
+    );
   }
 }
+
+export async function retrieveProductVariants() {}
 
 export async function importShopifyProducts(
   products: ShopifyProduct[],
@@ -220,9 +229,12 @@ export async function importShopifyProducts(
   } catch (err) {
     console.error(
       'An error occurred while import products from Shopify: ',
-      err,
+      err?.message,
     );
-    throw err;
+    console.error(
+      'An error occurred while importing shopify products: ',
+      err?.message,
+    );
   }
 }
 
@@ -264,7 +276,10 @@ export async function removeProduct(
       throw userErrors[0].message;
     }
   } catch (err) {
-    throw err;
+    console.error(
+      'An error occurred while removing shopify product: ',
+      err?.message,
+    );
   }
 }
 
@@ -379,8 +394,61 @@ export async function updateProduct(
       product: data?.productUpdate?.product || null,
     };
   } catch (err) {
-    console.log('An error occurred while update Shopify product: ', err);
-    throw err;
+    console.error(
+      'An error occurred while update Shopify product: ',
+      err?.message,
+    );
+    console.error(
+      'An error occurred while updating shopify products: ',
+      err?.message,
+    );
+  }
+}
+
+export async function retrieveProductVariantsByProductID(productId: string) {
+  try {
+    const doc = gql`
+      query Product($id: ID!) {
+        product(id: $id) {
+          variants(first: 100) {
+            nodes {
+              id
+              title
+              price
+              sku
+              barcode
+              inventoryQuantity
+              inventoryPolicy
+              selectedOptions {
+                name
+                value
+              }
+              createdAt
+              updatedAt
+            }
+          }
+        }
+      }
+    `;
+
+    const { data } = (await shopifyGraphqlClient.rawRequest(doc, {
+      id: productId,
+    })) as {
+      data: {
+        product: {
+          variants: {
+            nodes: ShopifyProductVariant[];
+          };
+        };
+      };
+    };
+
+    return data?.product?.variants?.nodes || [];
+  } catch (err) {
+    console.error(
+      'An error occurred while receiving shopify product variants: ',
+      err?.message,
+    );
   }
 }
 

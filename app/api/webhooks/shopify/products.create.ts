@@ -11,10 +11,7 @@ import {
   WebhookHandler,
 } from '@/types';
 import prisma from '@/db.server';
-import {
-  CreateFaireProductInput,
-  FaireProductVariantOption,
-} from '@/services/faire/types';
+import { CreateFaireProductInput } from '@/services/faire/types';
 import { isWithinMultiplierRange } from '@/utils/is-within-multiplier-range';
 import { escapeHTML } from '@/utils/escape-html';
 
@@ -23,6 +20,39 @@ const action: WebhookHandler = async ({ webhookContext, request }) => {
     const { payload, topic, shop, admin } = webhookContext;
 
     const shopifyProduct = payload as ShopifyProductPayload;
+
+    const shopifyProductVariants =
+      (await shopifyProductService.retrieveProductVariantsByProductID(
+        shopifyProduct.admin_graphql_api_id,
+      )) || [];
+
+    const groupedVariantOptions = shopifyProductVariants.reduce(
+      (acc, variant) => {
+        variant.selectedOptions.forEach((option) => {
+          if (!acc[option.name]) {
+            acc[option.name] = [];
+          }
+          acc[option.name].push(option.value);
+        });
+
+        return acc;
+      },
+      {} as Record<string, string[]>,
+    );
+
+    const shopifyProductOptions = Object.keys(groupedVariantOptions).map(
+      (optionName) => ({
+        name: optionName,
+        values: groupedVariantOptions[optionName],
+      }),
+    );
+
+    console.log({
+      groupedVariantOptions: JSON.stringify(groupedVariantOptions, null, 2),
+    });
+    console.log({
+      shopifyProductOptions: JSON.stringify(shopifyProductOptions, null, 2),
+    });
 
     const metafieldKeys = Object.values(Metafield);
 
@@ -121,22 +151,22 @@ const action: WebhookHandler = async ({ webhookContext, request }) => {
       };
     });
 
-    const options = shopifyProduct.options.reduce(
-      (acc, option) => {
-        const optionLabel = `option${option.position}` as
-          | 'option1'
-          | 'option2'
-          | 'option3';
-        acc[optionLabel] = option.name;
+    // const options = shopifyProduct.options.reduce(
+    //   (acc, option) => {
+    //     const optionLabel = `option${option.position}` as
+    //       | 'option1'
+    //       | 'option2'
+    //       | 'option3';
+    //     acc[optionLabel] = option.name;
 
-        return acc;
-      },
-      {} as {
-        option1: string;
-        option2: string;
-        option3: string;
-      },
-    );
+    //     return acc;
+    //   },
+    //   {} as {
+    //     option1: string;
+    //     option2: string;
+    //     option3: string;
+    //   },
+    // );
 
     if (platformMetadata.includes(Platform.Orderchamp)) {
       const marketplaceStorefront = (metafields[
@@ -151,20 +181,39 @@ const action: WebhookHandler = async ({ webhookContext, request }) => {
         title: shopifyProduct.title,
         description: escapeHTML(shopifyProduct.body_html),
         brand: shopifyProduct.vendor,
-        ...options,
-        variants: shopifyProduct.variants.map((variant) => ({
+        option1: shopifyProductVariants[0]?.selectedOptions?.[0]?.name || null,
+        option2: shopifyProductVariants[0]?.selectedOptions?.[1]?.name || null,
+        option3: shopifyProductVariants[0]?.selectedOptions?.[2]?.name || null,
+        variants: shopifyProductVariants.map((variant) => ({
           msrp: String(Math.max(Number(variant.price) || 0.01, 0.01)),
-          barcode: String(Number(variant.barcode) || variant.id),
-          inventoryPolicy:
-            variant.inventory_policy.toUpperCase() as InventoryPolicy,
-          inventoryQuantity: variant.inventory_quantity,
+          barcode: String(
+            Number(variant.barcode) ||
+              variant.id.replace('gid://shopify/ProductVariant/', ''),
+          ),
+          inventoryPolicy: variant.inventoryPolicy as InventoryPolicy,
+          inventoryQuantity: variant.inventoryQuantity,
           price:
             platformPrice ||
             String(Math.max(Number(variant.price) || 0.01, 0.01)),
           sku: variant.sku || `${variant.id}-temp-sku`,
-          option1: variant.option1 || null,
-          option2: variant.option2 || null,
-          option3: variant.option3 || null,
+          option1:
+            variant.selectedOptions.find(
+              ({ name }) =>
+                name === shopifyProductVariants[0]?.selectedOptions?.[0]?.name,
+            )?.value || null,
+          option2:
+            variant.selectedOptions.find(
+              ({ name }) =>
+                name === shopifyProductVariants[0]?.selectedOptions?.[1]?.name,
+            )?.value || null,
+          option3:
+            variant.selectedOptions.find(
+              ({ name }) =>
+                name === shopifyProductVariants[0]?.selectedOptions?.[2]?.name,
+            )?.value || null,
+          // option1: variant.option1 || null,
+          // option2: variant.option2 || null,
+          // option3: variant.option3 || null,
         })),
       };
 
@@ -195,7 +244,7 @@ const action: WebhookHandler = async ({ webhookContext, request }) => {
         description: escapeHTML(shopifyProduct.body_html),
         idempotence_token: shopifyProduct.admin_graphql_api_id,
         lifecycle_state:
-          shopifyProduct.status === ProductStatus.ACTIVE &&
+          shopifyProduct.status.toUpperCase() === ProductStatus.ACTIVE &&
           shopifyProduct.images.length > 0
             ? 'PUBLISHED'
             : 'DRAFT',
@@ -204,39 +253,15 @@ const action: WebhookHandler = async ({ webhookContext, request }) => {
         images: shopifyProduct.images.map((image) => ({
           url: image.src,
         })),
-        allow_sales_when_out_of_stock: shopifyProduct.variants.some(
-          (variant) =>
-            variant.inventory_policy.toUpperCase() === InventoryPolicy.CONTINUE,
+        allow_sales_when_out_of_stock: shopifyProductVariants.some(
+          (variant) => variant.inventoryPolicy === InventoryPolicy.CONTINUE,
         ),
         variant_option_sets:
           shopifyProduct.options.length === 1 &&
-          shopifyProduct.options[0].name === 'Title'
+          shopifyProduct.options[0].name.toLowerCase() === 'title'
             ? []
-            : shopifyProduct.options.map(({ name, values }) => ({
-                name,
-                values,
-              })),
-        variants: shopifyProduct.variants.map((variant) => {
-          const options = shopifyProduct.options
-            .map(({ name, position }) => {
-              const optionKey = `option${position}` as
-                | 'option1'
-                | 'option2'
-                | 'option3';
-
-              const value = variant[optionKey];
-
-              if (!value || value === 'Default Title') {
-                return null;
-              }
-
-              return {
-                name,
-                value,
-              };
-            })
-            .filter(Boolean) as FaireProductVariantOption[];
-
+            : shopifyProductOptions,
+        variants: shopifyProductVariants.map((variant) => {
           const wholesalePrice =
             (Number(platformPrice) ||
               Math.max(Number(variant.price) || 0.01, 0.01)) * 100;
@@ -252,7 +277,7 @@ const action: WebhookHandler = async ({ webhookContext, request }) => {
             : wholesalePrice * 2;
 
           return {
-            idempotence_token: variant.admin_graphql_api_id,
+            idempotence_token: variant.id,
             sku: variant.sku || `${variant.id}-temp-sku`,
             prices: [
               {
@@ -271,8 +296,8 @@ const action: WebhookHandler = async ({ webhookContext, request }) => {
                 },
               },
             ],
-            options,
-            available_quantity: variant.inventory_quantity,
+            options: variant.selectedOptions,
+            available_quantity: variant.inventoryQuantity,
           };
         }),
       };
@@ -282,6 +307,25 @@ const action: WebhookHandler = async ({ webhookContext, request }) => {
           id: productCategory,
         };
       }
+
+      console.log('===================');
+      console.log({ faireInput: JSON.stringify(input, null, 2) });
+      console.log('\n\n');
+      console.log({
+        shopifyProductVariants: JSON.stringify(
+          shopifyProduct.variants,
+          null,
+          2,
+        ),
+      });
+      console.log({
+        shopifyProductVariantsGRAPHQL: JSON.stringify(
+          shopifyProductVariants,
+          null,
+          2,
+        ),
+      });
+      console.log('===================');
 
       await faireProductService.createProduct(input, productWithVariants);
     }

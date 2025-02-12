@@ -214,7 +214,6 @@ export const syncProducts = async (
       },
     });
   } catch (err) {
-    console.log('An error occurred while sync products: ', err);
-    throw err;
+    console.error('An error occurred while sync products: ', err?.message);
   }
 };

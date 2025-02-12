@@ -15,7 +15,6 @@ import {
 } from '@shopify/polaris-icons';
 import { useAppBridge } from '@shopify/app-bridge-react';
 
-import * as ankorstoreOrdersService from '@/services/ankorstore/orders.server';
 import { authenticate } from '@/shopify.server';
 import * as shopifyProductsService from '@/services/shopify/products.server';
 import { syncProducts } from '@/services/sync-products.server';
@@ -34,6 +33,7 @@ import {
   ProductSortOptionValue,
 } from '@/types';
 import prisma from '@/db.server';
+import { retrieveAllOrders } from '@/services/orderchamp/orders.server';
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const response = await handleApiResponse(
@@ -208,6 +208,10 @@ export default function ProductsPage() {
 
     return actionData || loaderData;
   }, [loaderData, actionData]);
+
+  useEffect(() => {
+    console.log({ loaderData });
+  }, [loaderData]);
 
   const onNextPage = useCallback(() => {
     setPage((prevPage) => prevPage + 1);

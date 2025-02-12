@@ -29,12 +29,21 @@ export async function retrieveProductVariantByProductName(name: string) {
 }
 
 export async function updateProductQuantity(id: string, stockQuantity: number) {
-  await ankorstoreApiClient.patch(`/product-variants/${id}/stock`, {
-    id,
-    attributes: {
-      stockQuantity,
-    },
-  });
+  try {
+    await ankorstoreApiClient.patch(`/product-variants/${id}/stock`, {
+      id,
+      type: 'product-variants',
+      attributes: {
+        stockQuantity,
+        isAlwaysInStock: true,
+      },
+    });
+  } catch (err) {
+    console.error(
+      'An error occurred while update product quantity on the ankorstore: ',
+      err?.message,
+    );
+  }
 }
 
 export async function importProducts() {
@@ -87,7 +96,7 @@ export async function importProducts() {
     console.error(
       'An error occurred while receiving Ankorstore products: ',
       // @ts-ignore
-      err.response?.data,
+      err?.message,
     );
   }
 }

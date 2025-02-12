@@ -73,7 +73,10 @@ export async function retrieveChunkOfProducts(
 
     return { products: data.products, cost: extensions.throttle };
   } catch (err) {
-    throw err;
+    console.error(
+      'An error occurred while receiving orderchamp products: ',
+      err?.message,
+    );
   }
 }
 
@@ -118,7 +121,10 @@ export async function retrieveProductByID(id: string) {
 
     return data?.product;
   } catch (err) {
-    throw err;
+    console.error(
+      'An error occurred while receiving orderchamp product: ',
+      err?.message,
+    );
   }
 }
 
@@ -148,7 +154,10 @@ export async function retrieveProductVariantByID(id: string) {
 
     return data?.productVariant;
   } catch (err) {
-    throw err;
+    console.error(
+      'An error occurred while receiving orderchamp product variant: ',
+      err?.message,
+    );
   }
 }
 
@@ -189,7 +198,10 @@ export async function updateProductVariantQuantity(
 
     return data?.productVariant;
   } catch (err) {
-    throw err;
+    console.error(
+      'An error occurred while updating orderchamp product variant quantity: ',
+      err?.message,
+    );
   }
 }
 
@@ -223,7 +235,10 @@ export async function retrieveAllProducts(): Promise<OrderchampProduct[]> {
 
     return productsData;
   } catch (err) {
-    throw err;
+    console.error(
+      'An error occurred while receiving orderchamp products: ',
+      err?.message,
+    );
   }
 }
 
@@ -303,9 +318,8 @@ export async function importOrderchampProducts(
   } catch (error) {
     console.error(
       'An error occurred while import products from Orderchamp: ',
-      error,
+      error?.message,
     );
-    throw error;
   }
 }
 
@@ -342,7 +356,10 @@ export async function removeProduct(productId: string) {
       throw new Error(userErrors[0].message);
     }
   } catch (err) {
-    throw err;
+    console.error(
+      'An error occurred while removing orderchamp product: ',
+      err?.message,
+    );
   }
 }
 
@@ -411,6 +428,10 @@ export async function updateProduct(
     if (category) {
       input.category = category;
     }
+
+    console.log('===================');
+    console.log({ orderchampUpdateInput: JSON.stringify(input, null, 2) });
+    console.log('===================');
 
     const { data } = (await orderchampGraphqlClient.rawRequest(doc, {
       input,
@@ -604,8 +625,10 @@ export async function updateProduct(
       });
     }
   } catch (err) {
-    console.log('An error occurred while update Orderchamp product: ', err);
-    throw err;
+    console.error(
+      'An error occurred while update Orderchamp product: ',
+      err?.message,
+    );
   }
 }
 
@@ -644,10 +667,6 @@ export async function createProduct(
   parentProduct: Product & { variants: ProductVariant[] },
   marketplaceStorefrontLabel?: string,
 ) {
-  console.log({ input: JSON.stringify(input, null, 2) });
-  console.log({ parentProduct: JSON.stringify(parentProduct, null, 2) });
-  console.log({ marketplaceStorefrontLabel });
-
   try {
     const createProductDoc = gql`
       mutation ProductCreate($input: ProductCreateInput!) {
@@ -799,10 +818,8 @@ export async function createProduct(
   } catch (err) {
     console.error(
       'An error occurred while create product on Orderchamp: ',
-      err,
+      err?.message,
     );
-
-    throw err;
   }
 }
 
@@ -856,13 +873,6 @@ export async function syncProduct(
 
   console.log('\n\n\n\n====================');
   console.log({ isProductExist });
-  console.log({
-    orderchampPlatformProduct: JSON.stringify(
-      orderchampPlatformProduct,
-      null,
-      2,
-    ),
-  });
   console.log('====================\n\n\n\n');
 
   if (!isProductExist) {
@@ -984,12 +994,6 @@ export async function syncProduct(
     : shopifyProduct.media.nodes.map(({ preview }) => ({
         sourceUrl: preview.image.url,
       }));
-
-  console.log('=============');
-  console.log({ productFields: JSON.stringify(productFields, null, 2) });
-  console.log({ variantFields: JSON.stringify(variantFields, null, 2) });
-  console.log({ preparedImages: JSON.stringify(preparedImages, null, 2) });
-  console.log('=============');
 
   await updateProduct(
     { productFields, variantFields },

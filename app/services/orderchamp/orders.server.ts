@@ -16,8 +16,8 @@ export async function retrieveChunkOfOrders(
 }> {
   try {
     const query = gql`
-      query Orders($first: Int!, $afterCursor: String) {
-        orders(first: $first, after: $afterCursor) {
+      query Orders($first: Int!, $afterCursor: String, $sort: OrderSort) {
+        orders(first: $first, after: $afterCursor, sort: $sort) {
           nodes {
             id
             number
@@ -46,7 +46,7 @@ export async function retrieveChunkOfOrders(
 
     const { data, extensions } = (await orderchampGraphqlClient.rawRequest(
       query,
-      { first, afterCursor },
+      { first, afterCursor, sort: 'CREATED_AT_DESC' },
     )) as {
       data: { orders: OrderchampOrdersResponse };
       extensions: { throttle: OrderchampQueryCost };
@@ -54,7 +54,10 @@ export async function retrieveChunkOfOrders(
 
     return { orders: data.orders, cost: extensions.throttle };
   } catch (err) {
-    throw err;
+    console.error(
+      'An error occurred while receiving orderchamp products: ',
+      err?.message,
+    );
   }
 }
 
@@ -85,6 +88,9 @@ export async function retrieveAllOrders(): Promise<OrderchampOrder[]> {
 
     return ordersData;
   } catch (err) {
-    throw err;
+    console.error(
+      'An error occurred while receiving orderchamp orders: ',
+      err?.message,
+    );
   }
 }

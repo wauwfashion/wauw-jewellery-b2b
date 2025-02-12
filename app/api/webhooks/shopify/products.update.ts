@@ -43,11 +43,6 @@ const action: WebhookHandler = async ({ webhookContext, request }) => {
     return new Response();
   }
 
-  const shopifyVariants = shopifyProduct.variants;
-  const shopifyVariantIds = shopifyVariants.map(
-    (variant) => variant.admin_graphql_api_id,
-  );
-
   const metafieldKeys = Object.values(Metafield);
 
   const { metafields, platformPrice } =

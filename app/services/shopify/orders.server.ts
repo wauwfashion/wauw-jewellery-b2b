@@ -23,8 +23,20 @@ export async function retrieveChunkOfOrders({
 }> {
   try {
     const doc = gql`
-      query Orders($first: Int!, $afterCursor: String, $query: String) {
-        orders(first: $first, after: $afterCursor, query: $query) {
+      query Orders(
+        $first: Int!
+        $afterCursor: String
+        $query: String
+        $sortKey: OrderSortKeys
+        $reverse: Boolean
+      ) {
+        orders(
+          first: $first
+          after: $afterCursor
+          query: $query
+          sortKey: $sortKey
+          reverse: $reverse
+        ) {
           nodes {
             id
             name
@@ -60,6 +72,8 @@ export async function retrieveChunkOfOrders({
       first,
       afterCursor,
       query,
+      sortKey: 'UPDATED_AT',
+      reverse: true,
     })) as {
       data: { orders: ShopifyOrdersResponse };
       extensions: {
@@ -68,11 +82,11 @@ export async function retrieveChunkOfOrders({
     };
 
     return {
-      orders: data.orders,
-      cost: extensions.cost,
+      orders: data?.orders || [],
+      cost: extensions?.cost,
     };
   } catch (err) {
-    throw err;
+    console.error('An error occurred while receiving orders: ', err?.message);
   }
 }
 
@@ -80,7 +94,7 @@ export async function retrieveAllOrders(
   query?: string,
 ): Promise<ShopifyOrder[]> {
   try {
-    const limit = 100;
+    const limit = 10;
     let afterCursor: string | undefined = undefined;
     let hasNextPage = true;
     let ordersData: ShopifyOrder[] = [];
@@ -109,6 +123,9 @@ export async function retrieveAllOrders(
 
     return ordersData;
   } catch (err) {
-    throw err;
+    console.error(
+      'An error occurred while receiving shopify orders: ',
+      err?.message,
+    );
   }
 }

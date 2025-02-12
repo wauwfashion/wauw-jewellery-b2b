@@ -154,22 +154,11 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
             },
           });
 
-          // const { metafields, platformPrice } =
-          //   await shopifyProductsService.retrieveMetafields(
-          //     admin?.graphql!,
-          //     product?.shopifyStorefrontId || '',
-          //     Object.keys(Metafield),
-          //   );
-
           const updateProductData = prepareUpdateProductFields({
             currentPlatform: currentPlatform as Platform,
             product,
             productFields,
             variantFields,
-          });
-
-          console.log({
-            product: JSON.stringify(product, null, 2),
           });
 
           const updateHandlers: Record<Platform, Function> = {

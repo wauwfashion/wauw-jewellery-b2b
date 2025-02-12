@@ -39,7 +39,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
       if (store) {
         const ordersData = await getPaginatedOrders({
-          filter: { platform: Platform.Shopify },
           pagination: { limit: 10, skip: 0 },
         });
 
@@ -68,7 +67,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       await seedOrders(shop);
 
       const ordersData = await getPaginatedOrders({
-        filter: { platform: Platform.Shopify },
         pagination: { limit: 10, skip: 0 },
       });
 
@@ -278,6 +276,12 @@ export default function OrdersPage() {
           items={preparedData?.data?.orders}
           totalCount={preparedData?.data?.totalCount}
           isLoading={isLoading}
+          unfulfilledOrdersCount={
+            preparedData?.data?.unfulfilledOrdersCount || 0
+          }
+          unfulfilledOrdersCountByPlatform={
+            preparedData?.data?.unfulfilledOrdersByPlatforms
+          }
           handleFilterOrders={handleFilterOrders}
           onResetPagination={onResetPagination}
         />

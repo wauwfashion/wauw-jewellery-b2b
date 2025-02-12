@@ -177,9 +177,8 @@ export async function importFaireProducts(
   } catch (error) {
     console.error(
       'An error occurred while import products from Faire: ',
-      error,
+      error?.message,
     );
-    throw error;
   }
 }
 
@@ -205,7 +204,7 @@ export async function updateProductQuantity(input: {
   } catch (err) {
     console.error(
       'An error occurred while update Faire product variant quantity: ',
-      err,
+      err?.message,
     );
   }
 }
@@ -268,7 +267,10 @@ export async function createProduct(
       });
     }
   } catch (err) {
-    console.error('An error occurred while create product on Faire: ', err);
+    console.error(
+      'An error occurred while create product on Faire: ',
+      err?.message,
+    );
   }
 }
 
@@ -294,7 +296,7 @@ export async function createProductVariant(
   } catch (err) {
     console.error(
       'An error occurred while create Faire product variant: ',
-      err,
+      err?.message,
     );
   }
 }
@@ -314,6 +316,10 @@ export async function updateProduct(
       ...restInput,
       variants: mappedVariants,
     };
+
+    console.log('=====================');
+    console.log({ updateFaireInput: JSON.stringify(preparedInput, null, 2) });
+    console.log('=====================');
 
     const { data: updatedProduct } = await faireApiClient.patch<FaireProduct>(
       `/products/${productId}`,
@@ -385,122 +391,12 @@ export async function updateProduct(
     }
   } catch (err) {
     // @ts-ignore
-    console.error('An error occurred while update product on Faire: ', err);
+    console.error(
+      'An error occurred while update product on Faire: ',
+      err?.message,
+    );
   }
 }
-// export async function updateProduct(
-//   productId: string,
-//   input: UpdateFaireProductInput,
-// ) {
-//   try {
-//     const { variants = [], ...restInput } = input;
-//     const existedProduct = await retrieveProductByID(productId);
-
-//     const { data } = await faireApiClient.patch<FaireProduct>(
-//       `/products/${productId}`,
-//       restInput,
-//     );
-
-//     const createdVariants: FaireProductVariant[] = [];
-
-//     for (const variant of variants) {
-//       const createdVariant = await createProductVariant(productId, {
-//         available_quantity: variant?.available_quantity || 0,
-//         lifecycle_state: variant.lifecycle_state || 'PUBLISHED',
-//         sale_state: 'FOR_SALE',
-//         sku: variant.sku,
-//         prices: variant.prices,
-//         options: variant.options,
-//       });
-
-//       if (createdVariant) {
-//         createdVariants.push(createdVariant);
-//       }
-//     }
-
-//     for (const variant of existedProduct?.variants || []) {
-//       await removeProductVariant(productId, variant.id);
-
-//       await prisma.platformProductVariant.delete({
-//         where: {
-//           storefrontId: variant.id,
-//         },
-//       });
-//     }
-
-//     const updatedProduct = {
-//       ...data,
-//       variants: createdVariants,
-//     };
-
-//     const updatedPlatformProduct = await prisma.platformProduct.update({
-//       where: {
-//         storefrontId: productId,
-//       },
-//       data: {
-//         category: updatedProduct?.taxonomy_type?.name || 'Uncategorized',
-//         description: updatedProduct.description,
-//         status:
-//           updatedProduct.lifecycle_state === 'PUBLISHED'
-//             ? ProductStatus.ACTIVE
-//             : ProductStatus.DRAFT,
-//         title: updatedProduct.name,
-//         tags: [],
-//         updatedAt: updatedProduct.updated_at,
-//       },
-//       include: {
-//         product: {
-//           include: {
-//             variants: true,
-//           },
-//         },
-//       },
-//     });
-
-//     for (const variant of updatedProduct.variants) {
-//       const matchingProductVariant =
-//         updatedPlatformProduct.product.variants.find(
-//           (v) => v.sku === variant.sku,
-//         );
-
-//       if (!matchingProductVariant) {
-//         continue;
-//       }
-
-//       await prisma.platformProductVariant.upsert({
-//         where: {
-//           platform: Platform.Orderchamp,
-//           storefrontId: variant.id,
-//         },
-//         update: {
-//           title: variant.name,
-//           barcode: '',
-//           price: Math.max(
-//             0,
-//             (variant.prices?.[0].wholesale_price.amount_minor || 100) / 100,
-//           ).toFixed(2),
-//           updatedAt: variant.updated_at,
-//         },
-//         create: {
-//           platform: Platform.Orderchamp,
-//           storefrontId: variant.id,
-//           title: variant.name,
-//           barcode: '',
-//           price: Math.max(
-//             0,
-//             (variant?.prices?.[0].wholesale_price.amount_minor || 100) / 100,
-//           ).toFixed(2),
-//           createdAt: variant.created_at,
-//           updatedAt: variant.updated_at,
-//           productVariant: { connect: { id: matchingProductVariant.id } },
-//         },
-//       });
-//     }
-//   } catch (err) {
-//     // @ts-ignore
-//     console.error('An error occurred while update product on Faire: ', err);
-//   }
-// }
 
 export async function syncProduct(
   shopifyProduct: ShopifyProduct,
@@ -558,7 +454,8 @@ export async function syncProduct(
         description: escapeHTML(shopifyProduct.descriptionHtml),
         idempotence_token: shopifyProduct.id,
         lifecycle_state:
-          shopifyProduct.status === ProductStatus.ACTIVE && images.length > 0
+          shopifyProduct.status.toUpperCase() === ProductStatus.ACTIVE &&
+          images.length > 0
             ? 'PUBLISHED'
             : 'DRAFT',
         minimum_order_quantity: 1,
@@ -569,7 +466,7 @@ export async function syncProduct(
         ),
         variant_option_sets:
           shopifyProduct.options.length === 1 &&
-          shopifyProduct.options[0].name === 'Title'
+          shopifyProduct.options[0].name.toLowerCase() === 'title'
             ? []
             : shopifyProduct.options.map(({ name, values }) => ({
                 name,
@@ -617,6 +514,7 @@ export async function syncProduct(
           return {
             id: storefrontId,
             idempotence_token: variant.id,
+            available_quantity: variant.inventoryQuantity,
             sku:
               variant.sku ||
               `${variant.id.replace('gid://shopify/ProductVariant/', '')}-temp-sku`,
@@ -666,13 +564,13 @@ export async function syncProduct(
         (variant) => variant.inventoryPolicy === InventoryPolicy.CONTINUE,
       ),
       lifecycle_state:
-        shopifyProduct.status === ProductStatus.ACTIVE &&
+        shopifyProduct.status.toUpperCase() === ProductStatus.ACTIVE &&
         preparedImages.filter((image) => !!image.url).length > 0
           ? 'PUBLISHED'
           : 'DRAFT',
       variant_option_sets:
         shopifyProduct.options.length === 1 &&
-        shopifyProduct.options[0].name === 'Title'
+        shopifyProduct.options[0].name.toLowerCase() === 'title'
           ? []
           : shopifyProduct.options.map(({ name, values }) => ({
               name,
@@ -690,7 +588,7 @@ export async function syncProduct(
               (option) => option.name === name,
             )?.value;
 
-            if (!value || value === 'Default Title') {
+            if (!value || value.toLowerCase() === 'default title') {
               return null;
             }
 
@@ -720,6 +618,7 @@ export async function syncProduct(
         return {
           id: storefrontId,
           idempotence_token: variant.id,
+          available_quantity: variant.inventoryQuantity,
           sku:
             variant.sku ||
             `${variant.id.replace('gid://shopify/ProductVariant/', '')}-temp-sku`,
@@ -752,6 +651,9 @@ export async function syncProduct(
     }
     await updateProduct(fairePlatformProduct?.storefrontId || '', input);
   } catch (err) {
-    console.error('An error occurred while sync product on Faire: ', err);
+    console.error(
+      'An error occurred while sync product on Faire: ',
+      err?.message,
+    );
   }
 }

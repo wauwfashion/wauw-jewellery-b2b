@@ -36,6 +36,8 @@ type Props = {
   storeDomain: string;
   items?: Jsonify<PaginatedOrders['orders']>;
   totalCount?: number;
+  unfulfilledOrdersCount: number;
+  unfulfilledOrdersCountByPlatform: Record<Platform, number>;
   pagination?:
     | (Omit<Required<IndexTableBaseProps>['pagination'], 'label'> & {
         visibleCount: number;
@@ -100,7 +102,7 @@ const HEADINGS: IndexTableBaseProps['headings'] = [
   },
 ];
 
-const DEFAULT_TAB_LABELS = Object.values(Platform) as string[];
+const DEFAULT_TAB_LABELS = ['All', ...Object.values(Platform)] as string[];
 const DEFAULT_SORT_SELECTED: SelectedSort = [
   `${OrderSortOptionValue.UpdatedAt} ${Direction.Descending}`,
 ];
@@ -111,12 +113,12 @@ export const OrdersTable: FC<Props> = ({
   pagination,
   isLoading,
   storeDomain,
+  unfulfilledOrdersCount,
+  unfulfilledOrdersCountByPlatform,
   handleFilterOrders,
   onResetPagination,
 }) => {
-  const [selectedTab, setSelectedTab] = useState(
-    DEFAULT_TAB_LABELS.findIndex((tab) => tab === Platform.Shopify) || 0,
-  );
+  const [selectedTab, setSelectedTab] = useState(0);
   const [sortSelected, setSortSelected] = useState<SelectedSort>(
     DEFAULT_SORT_SELECTED,
   );
@@ -227,10 +229,10 @@ export const OrdersTable: FC<Props> = ({
   const tabs: TabProps[] = useMemo(
     () =>
       tabLabels.map((label, index) => ({
-        content: label,
+        content: `${label} (${label === 'All' ? unfulfilledOrdersCount : unfulfilledOrdersCountByPlatform[label as Platform] || 0})`,
         index,
         onAction: () => {},
-        id: `${label}-${index}`,
+        id: label,
         isLocked: DEFAULT_TAB_LABELS.includes(label),
         actions: DEFAULT_TAB_LABELS.includes(label)
           ? []
@@ -258,7 +260,7 @@ export const OrdersTable: FC<Props> = ({
   );
 
   const currentTab = useMemo(() => {
-    return tabs[selectedTab]?.content || DEFAULT_TAB_LABELS[0];
+    return tabs[selectedTab]?.id || DEFAULT_TAB_LABELS[0];
   }, [selectedTab, tabs, DEFAULT_TAB_LABELS]);
 
   const primaryAction: IndexFiltersProps['primaryAction'] = {
@@ -421,9 +423,12 @@ export const OrdersTable: FC<Props> = ({
   }, [paymentStatus, fulfillmentStatus, totalPrice, lineItemsCount]);
 
   useEffect(() => {
-    const filterOptions: OrderWhereInput = {
-      platform: (tabs[selectedTab]?.content || Platform.Shopify) as Platform,
-    };
+    const filterOptions: OrderWhereInput = {};
+
+    if (selectedTab !== 0) {
+      filterOptions.platform = (tabs[selectedTab]?.id ||
+        Platform.Shopify) as Platform;
+    }
 
     if (paymentStatus) {
       filterOptions.paymentStatus = paymentStatus;
