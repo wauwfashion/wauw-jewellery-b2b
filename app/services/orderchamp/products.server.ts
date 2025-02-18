@@ -677,6 +677,8 @@ export async function createProduct(
       },
     });
 
+    console.log({ product: Boolean(product) });
+
     if (product) {
       return;
     }

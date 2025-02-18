@@ -450,11 +450,7 @@ export async function syncProduct(
       },
     });
 
-    if (!productWithVariants) {
-      return;
-    }
-
-    const fairePlatformProduct = productWithVariants.platformProducts.find(
+    const fairePlatformProduct = productWithVariants?.platformProducts.find(
       ({ platform }) => platform === Platform.Faire,
     );
 
@@ -591,12 +587,12 @@ export async function syncProduct(
                 country_group: 'EUROPEAN_UNION',
               },
               wholesale_price: {
-                amount_minor: wholesalePrice,
+                amount_minor: Math.round(wholesalePrice),
                 currency: 'EUR',
                 // currency: store?.currencyCode || 'EUR',
               },
               retail_price: {
-                amount_minor: preparedRetailPrice,
+                amount_minor: Math.round(preparedRetailPrice),
                 currency: 'EUR',
                 // currency: store?.currencyCode || 'EUR',
               },
@@ -611,6 +607,18 @@ export async function syncProduct(
       // @ts-ignore
       input.category = category;
     }
+
+    console.log({
+      inputVariants: JSON.stringify(
+        input.variants.map((variant) => ({
+          options: variant.options,
+        })),
+      ),
+    });
+
+    console.log({
+      input: JSON.stringify(input, null, 2),
+    });
 
     const updatedProductWithVariants = await prisma.product.findFirst({
       where: {
@@ -629,15 +637,6 @@ export async function syncProduct(
     if (!updatedProductWithVariants) {
       return;
     }
-
-    console.log({
-      input: JSON.stringify(input, null, 2),
-      updatedProductWithVariants: JSON.stringify(
-        updatedProductWithVariants,
-        null,
-        2,
-      ),
-    });
 
     await createProduct(input, updatedProductWithVariants);
 
