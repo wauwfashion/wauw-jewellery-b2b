@@ -84,6 +84,7 @@ export interface CreateProductInput {
   option2: string | null;
   option3: string | null;
   variants: {
+    images?: { sourceUrl: string }[];
     barcode: string;
     msrp?: string;
     inventoryQuantity: number;

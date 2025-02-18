@@ -1,16 +1,23 @@
 import type { ActionFunctionArgs } from '@remix-run/node';
 
-import { authenticate } from '@/shopify.server';
+import { authenticate, unauthenticated } from '@/shopify.server';
 import { webhookHandlers } from '@/api/webhooks/shopify';
 import { WebhookTopic } from '@/types';
 
-export const action = async ({ request }: ActionFunctionArgs) => {
-  const webhookContext = await authenticate.webhook(request);
+export const action = async ({ request, context }: ActionFunctionArgs) => {
+  const shop = request.headers.get('x-shopify-shop-domain') as string;
+  const topic = (request.headers.get('x-shopify-topic') as string)
+    .replace('/', '_')
+    .toUpperCase() as WebhookTopic;
 
-  const { topic, admin } = webhookContext;
+  const { admin } = await unauthenticated.admin(shop);
 
   if (!admin) {
     throw new Response();
+  }
+
+  if (!WebhookTopic[topic]) {
+    return new Response('Unhandled webhook topic', { status: 404 });
   }
 
   if (
@@ -29,7 +36,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     throw new Response('Unhandled webhook topic', { status: 404 });
   }
 
-  const response = await webhookHandler({ webhookContext, request });
+  const response = await webhookHandler({
+    request,
+    shop,
+    graphql: admin.graphql,
+  });
 
   return response || null;
 };

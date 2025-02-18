@@ -1,13 +1,12 @@
 import {
   Field,
+  lengthLessThan,
+  lengthMoreThan,
   notEmptyString,
   positiveIntegerString,
   positiveNumericString,
-  lengthMoreThan,
-  lengthLessThan,
   useField,
 } from '@shopify/react-form';
-import _ from 'lodash';
 import { ProductStatus } from '@prisma/client';
 
 import { MappedProductDetailsData } from '@/utils/map-product-details';

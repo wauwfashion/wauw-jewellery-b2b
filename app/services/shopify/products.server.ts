@@ -160,8 +160,6 @@ export async function retrieveAllProducts(
   }
 }
 
-export async function retrieveProductVariants() {}
-
 export async function importShopifyProducts(
   products: ShopifyProduct[],
   storeDomain: string,
@@ -416,12 +414,17 @@ export async function retrieveProductVariantsByProductID(productId: string) {
               title
               price
               sku
+              position
               barcode
               inventoryQuantity
               inventoryPolicy
               selectedOptions {
                 name
                 value
+              }
+              image {
+                id
+                url
               }
               createdAt
               updatedAt

@@ -15,35 +15,50 @@ import { MediaType, ShopifyProduct } from '../shopify/types';
 import { escapeHTML } from '@/utils/escape-html';
 import { isWithinMultiplierRange } from '@/utils/is-within-multiplier-range';
 import prisma from '@/db.server';
+import { v4 as uuidV4 } from 'uuid';
 
 export async function retrieveChunkOfProducts(page = 1, limit = 50) {
-  const { data: productsResponse } =
-    await faireApiClient.get<FaireProductsResponse>(
-      `/products?page=${page}&limit=${limit}`,
-    );
+  try {
+    const { data: productsResponse } =
+      await faireApiClient.get<FaireProductsResponse>(
+        `/products?page=${page}&limit=${limit}`,
+      );
 
-  return productsResponse;
+    return productsResponse;
+  } catch (err) {
+    console.error(
+      'An error occurred while retrieveChunkOfProducts Faire: ',
+      err?.message,
+    );
+  }
 }
 
 export async function retrieveAllProducts() {
-  const limit = 50;
-  let page = 1;
-  let hasNextPage = true;
-  let productsData: FaireProduct[] = [];
+  try {
+    const limit = 50;
+    let page = 1;
+    let hasNextPage = true;
+    let productsData: FaireProduct[] = [];
 
-  while (hasNextPage) {
-    const productsChunk = await retrieveChunkOfProducts(page, limit);
+    while (hasNextPage) {
+      const productsChunk = await retrieveChunkOfProducts(page, limit);
 
-    productsData = [...productsData, ...productsChunk.products];
+      productsData = [...productsData, ...productsChunk.products];
 
-    if (productsChunk.products.length < limit) {
-      hasNextPage = false;
+      if (productsChunk.products.length < limit) {
+        hasNextPage = false;
+      }
+
+      page++;
     }
 
-    page++;
+    return productsData;
+  } catch (err) {
+    console.error(
+      'An error occurred while retrieveAllProducts Faire: ',
+      err?.message,
+    );
   }
-
-  return productsData;
 }
 
 export async function retrieveAllProductCategories() {
@@ -55,7 +70,14 @@ export async function retrieveAllProductCategories() {
 }
 
 export async function removeProduct(id: string) {
-  return faireApiClient.delete<void, void>(`/products/${id}`);
+  try {
+    await faireApiClient.delete<void, void>(`/products/${id}`);
+  } catch (err) {
+    console.error(
+      'An error occurred while removing Faire product: ',
+      err?.message,
+    );
+  }
 }
 
 export async function retrieveProductByID(id: string) {
@@ -214,6 +236,17 @@ export async function createProduct(
   parentProduct: Product & { variants: ProductVariant[] },
 ) {
   try {
+    const product = await prisma.platformProduct.findFirst({
+      where: {
+        platform: Platform.Faire,
+        title: input.name,
+      },
+    });
+
+    if (product) {
+      return;
+    }
+
     const { data: createdProduct } = await faireApiClient.post<FaireProduct>(
       '/products',
       input,
@@ -429,145 +462,69 @@ export async function syncProduct(
       fairePlatformProduct?.storefrontId || 'empty',
     );
 
-    const faireProductVariants = productWithVariants.variants
-      .flatMap(({ platformProductVariants, shopifyVariantStorefrontId }) =>
-        platformProductVariants.map((variant) => ({
-          ...variant,
-          shopifyVariantStorefrontId,
-        })),
-      )
-      .filter(({ platform }) => platform === Platform.Faire);
+    // const faireProductVariants = productWithVariants.variants
+    //   .flatMap(({ platformProductVariants, shopifyVariantStorefrontId }) =>
+    //     platformProductVariants.map((variant) => ({
+    //       ...variant,
+    //       shopifyVariantStorefrontId,
+    //     })),
+    //   )
+    //   .filter(({ platform }) => platform === Platform.Faire);
 
-    if (!existedProduct) {
-      const shopifyImages = shopifyProduct.media.nodes.filter(
-        (media) => media.mediaContentType === MediaType.IMAGE,
-      );
+    if (existedProduct) {
+      const generalProductVariants = productWithVariants.variants;
 
-      const images = !shopifyImages.length
-        ? [{ url: '' }]
-        : shopifyImages.map((media) => ({
-            url: media.preview.image.url,
-          }));
+      for (const variant of generalProductVariants) {
+        const faireVariant = variant.platformProductVariants.find(
+          ({ platform }) => platform === Platform.Faire,
+        );
 
-      const input: CreateFaireProductInput = {
-        name: shopifyProduct.title,
-        description: escapeHTML(shopifyProduct.descriptionHtml),
-        idempotence_token: shopifyProduct.id,
-        lifecycle_state:
-          shopifyProduct.status.toUpperCase() === ProductStatus.ACTIVE &&
-          images.length > 0
-            ? 'PUBLISHED'
-            : 'DRAFT',
-        minimum_order_quantity: 1,
-        unit_multiplier: 1,
-        images,
-        allow_sales_when_out_of_stock: shopifyProduct.variants.nodes.some(
-          (variant) => variant.inventoryPolicy === InventoryPolicy.CONTINUE,
-        ),
-        variant_option_sets:
-          shopifyProduct.options.length === 1 &&
-          shopifyProduct.options[0].name.toLowerCase() === 'title'
-            ? []
-            : shopifyProduct.options.map(({ name, values }) => ({
-                name,
-                values,
-              })),
-        variants: shopifyProduct.variants.nodes.map((variant) => {
-          const storefrontId = faireProductVariants.find(
-            (faireVariant) =>
-              faireVariant.shopifyVariantStorefrontId === variant.id,
-          )?.storefrontId;
+        if (!faireVariant) {
+          continue;
+        }
 
-          const options = shopifyProduct.options
-            .map(({ name }) => {
-              const value = variant.selectedOptions.find(
-                (option) => option.name === name,
-              )?.value;
-
-              if (!value || value === 'Default Title') {
-                return null;
-              }
-
-              return {
-                name,
-                value,
-              };
-            })
-            .filter(Boolean) as FaireProductVariantOption[];
-
-          const wholesalePrice =
-            Math.max(Number(variant.price) || 0.01, 0.01) * 100;
-
-          const retailPrice =
-            Math.max(
-              Number(variant.msrp) || Number(variant.price) || 0.01,
-              0.01,
-            ) * 100;
-
-          const preparedRetailPrice = isWithinMultiplierRange(
-            wholesalePrice,
-            retailPrice,
-          )
-            ? retailPrice
-            : wholesalePrice * 2;
-
-          return {
-            id: storefrontId,
-            idempotence_token: variant.id,
-            available_quantity: variant.inventoryQuantity,
-            sku:
-              variant.sku ||
-              `${variant.id.replace('gid://shopify/ProductVariant/', '')}-temp-sku`,
-            prices: [
-              {
-                geo_constraint: {
-                  country_group: 'EUROPEAN_UNION',
-                },
-                wholesale_price: {
-                  amount_minor: wholesalePrice,
-                  currency: 'EUR',
-                  // currency: store?.currencyCode || 'EUR',
-                },
-                retail_price: {
-                  amount_minor: preparedRetailPrice,
-                  currency: 'EUR',
-                  // currency: store?.currencyCode || 'EUR',
-                },
-              },
-            ],
-            options,
-          };
-        }),
-      };
-
-      if (category) {
-        // @ts-ignore
-        input.category = category;
+        await prisma.platformProductVariant.delete({
+          where: {
+            id: faireVariant?.id || '',
+          },
+        });
       }
 
-      await createProduct(input, productWithVariants);
+      await prisma.platformProduct.delete({
+        where: {
+          platform: Platform.Faire,
+          id: fairePlatformProduct?.id || '',
+        },
+      });
 
-      return;
+      await removeProduct(existedProduct.id);
     }
 
-    const preparedImages = !shopifyProduct.media.nodes.length
+    const shopifyImages = shopifyProduct.media.nodes.filter(
+      (media) => media.mediaContentType === MediaType.IMAGE,
+    );
+
+    const images = !shopifyImages.length
       ? [{ url: '' }]
-      : shopifyProduct.media.nodes.map(({ preview }) => ({
-          url: preview.image.url,
+      : shopifyImages.map((media) => ({
+          url: media.preview.image.url,
         }));
 
-    const input: UpdateFaireProductInput = {
+    const input: CreateFaireProductInput = {
       name: shopifyProduct.title,
       description: escapeHTML(shopifyProduct.descriptionHtml),
-      images: preparedImages,
+      idempotence_token: `${uuidV4()}-${shopifyProduct.id}`,
+      lifecycle_state:
+        shopifyProduct.status.toUpperCase() === ProductStatus.ACTIVE &&
+        images.length > 0
+          ? 'PUBLISHED'
+          : 'DRAFT',
+      minimum_order_quantity: 1,
+      unit_multiplier: 1,
+      images,
       allow_sales_when_out_of_stock: shopifyProduct.variants.nodes.some(
         (variant) => variant.inventoryPolicy === InventoryPolicy.CONTINUE,
       ),
-      lifecycle_state:
-        shopifyProduct.status.toUpperCase() === ProductStatus.ACTIVE &&
-        preparedImages.filter((image) => !!image.url).length > 0
-          ? 'PUBLISHED'
-          : 'DRAFT',
       variant_option_sets:
         shopifyProduct.options.length === 1 &&
         shopifyProduct.options[0].name.toLowerCase() === 'title'
@@ -577,10 +534,10 @@ export async function syncProduct(
               values,
             })),
       variants: shopifyProduct.variants.nodes.map((variant) => {
-        const storefrontId = faireProductVariants.find(
-          (faireVariant) =>
-            faireVariant.shopifyVariantStorefrontId === variant.id,
-        )?.storefrontId;
+        // const storefrontId = faireProductVariants.find(
+        //   (faireVariant) =>
+        //     faireVariant.shopifyVariantStorefrontId === variant.id,
+        // )?.storefrontId;
 
         const options = shopifyProduct.options
           .map(({ name }) => {
@@ -588,7 +545,7 @@ export async function syncProduct(
               (option) => option.name === name,
             )?.value;
 
-            if (!value || value.toLowerCase() === 'default title') {
+            if (!value || value === 'Default Title') {
               return null;
             }
 
@@ -616,8 +573,14 @@ export async function syncProduct(
           : wholesalePrice * 2;
 
         return {
-          id: storefrontId,
-          idempotence_token: variant.id,
+          // id: storefrontId,
+          idempotence_token: `${uuidV4()}-${variant.id}`,
+          images: variant.image ? [{ url: variant.image.url }] : undefined,
+          lifecycle_state:
+            shopifyProduct.status.toUpperCase() === ProductStatus.ACTIVE &&
+            shopifyImages.length > 0
+              ? 'PUBLISHED'
+              : 'DRAFT',
           available_quantity: variant.inventoryQuantity,
           sku:
             variant.sku ||
@@ -645,11 +608,146 @@ export async function syncProduct(
     };
 
     if (category) {
-      input.taxonomy_type = {
-        id: category,
-      };
+      // @ts-ignore
+      input.category = category;
     }
-    await updateProduct(fairePlatformProduct?.storefrontId || '', input);
+
+    const updatedProductWithVariants = await prisma.product.findFirst({
+      where: {
+        shopifyStorefrontId: shopifyProduct.id,
+      },
+      include: {
+        platformProducts: true,
+        variants: {
+          include: {
+            platformProductVariants: true,
+          },
+        },
+      },
+    });
+
+    if (!updatedProductWithVariants) {
+      return;
+    }
+
+    console.log({
+      input: JSON.stringify(input, null, 2),
+      updatedProductWithVariants: JSON.stringify(
+        updatedProductWithVariants,
+        null,
+        2,
+      ),
+    });
+
+    await createProduct(input, updatedProductWithVariants);
+
+    // await prisma.platformProductVariant.deleteMany({
+    //   where: {
+    //     platform: Platform.Faire,
+
+    //   }
+    // })
+
+    // const preparedImages = !shopifyProduct.media.nodes.length
+    //   ? [{ url: '' }]
+    //   : shopifyProduct.media.nodes.map(({ preview }) => ({
+    //       url: preview.image.url,
+    //     }));
+
+    // const input: UpdateFaireProductInput = {
+    //   name: shopifyProduct.title,
+    //   description: escapeHTML(shopifyProduct.descriptionHtml),
+    //   images: preparedImages,
+    //   allow_sales_when_out_of_stock: shopifyProduct.variants.nodes.some(
+    //     (variant) => variant.inventoryPolicy === InventoryPolicy.CONTINUE,
+    //   ),
+    //   lifecycle_state:
+    //     shopifyProduct.status.toUpperCase() === ProductStatus.ACTIVE &&
+    //     preparedImages.filter((image) => !!image.url).length > 0
+    //       ? 'PUBLISHED'
+    //       : 'DRAFT',
+    //   variant_option_sets:
+    //     shopifyProduct.options.length === 1 &&
+    //     shopifyProduct.options[0].name.toLowerCase() === 'title'
+    //       ? []
+    //       : shopifyProduct.options.map(({ name, values }) => ({
+    //           name,
+    //           values,
+    //         })),
+    //   variants: shopifyProduct.variants.nodes.map((variant) => {
+    //     const storefrontId = faireProductVariants.find(
+    //       (faireVariant) =>
+    //         faireVariant.shopifyVariantStorefrontId === variant.id,
+    //     )?.storefrontId;
+
+    //     const options = shopifyProduct.options
+    //       .map(({ name }) => {
+    //         const value = variant.selectedOptions.find(
+    //           (option) => option.name === name,
+    //         )?.value;
+
+    //         if (!value || value.toLowerCase() === 'default title') {
+    //           return null;
+    //         }
+
+    //         return {
+    //           name,
+    //           value,
+    //         };
+    //       })
+    //       .filter(Boolean) as FaireProductVariantOption[];
+
+    //     const wholesalePrice =
+    //       Math.max(Number(variant.price) || 0.01, 0.01) * 100;
+
+    //     const retailPrice =
+    //       Math.max(
+    //         Number(variant.msrp) || Number(variant.price) || 0.01,
+    //         0.01,
+    //       ) * 100;
+
+    //     const preparedRetailPrice = isWithinMultiplierRange(
+    //       wholesalePrice,
+    //       retailPrice,
+    //     )
+    //       ? retailPrice
+    //       : wholesalePrice * 2;
+
+    //     return {
+    //       id: storefrontId,
+    //       idempotence_token: variant.id,
+    //       available_quantity: variant.inventoryQuantity,
+    //       sku:
+    //         variant.sku ||
+    //         `${variant.id.replace('gid://shopify/ProductVariant/', '')}-temp-sku`,
+    //       prices: [
+    //         {
+    //           geo_constraint: {
+    //             country_group: 'EUROPEAN_UNION',
+    //           },
+    //           wholesale_price: {
+    //             amount_minor: wholesalePrice,
+    //             currency: 'EUR',
+    //             // currency: store?.currencyCode || 'EUR',
+    //           },
+    //           retail_price: {
+    //             amount_minor: preparedRetailPrice,
+    //             currency: 'EUR',
+    //             // currency: store?.currencyCode || 'EUR',
+    //           },
+    //         },
+    //       ],
+    //       options,
+    //     };
+    //   }),
+    // };
+
+    // if (category) {
+    //   input.taxonomy_type = {
+    //     id: category,
+    //   };
+    // }
+    // await updateProduct(fairePlatformProduct?.storefrontId || '', input);
   } catch (err) {
     console.error(
       'An error occurred while sync product on Faire: ',

@@ -19,10 +19,13 @@ import { ShopifyProduct } from '../shopify/types';
 export async function retrieveChunkOfProducts(
   first: number,
   afterCursor?: string,
-): Promise<{
-  products: OrderchampProductsResponse;
-  cost: OrderchampQueryCost;
-}> {
+): Promise<
+  | {
+      products: OrderchampProductsResponse;
+      cost: OrderchampQueryCost;
+    }
+  | undefined
+> {
   try {
     const query = gql`
       query Products($first: Int!, $afterCursor: String) {
@@ -205,7 +208,7 @@ export async function updateProductVariantQuantity(
   }
 }
 
-export async function retrieveAllProducts(): Promise<OrderchampProduct[]> {
+export async function retrieveAllProducts() {
   try {
     const limit = 10;
     let afterCursor: string | undefined = undefined;
@@ -213,10 +216,13 @@ export async function retrieveAllProducts(): Promise<OrderchampProduct[]> {
     let productsData: OrderchampProduct[] = [];
 
     while (hasNextPage) {
-      const { products, cost } = await retrieveChunkOfProducts(
-        limit,
-        afterCursor,
-      );
+      const data = await retrieveChunkOfProducts(limit, afterCursor);
+
+      if (!data) {
+        break;
+      }
+
+      const { cost, products } = data;
 
       const { nodes, pageInfo } = products;
 
@@ -428,10 +434,6 @@ export async function updateProduct(
     if (category) {
       input.category = category;
     }
-
-    console.log('===================');
-    console.log({ orderchampUpdateInput: JSON.stringify(input, null, 2) });
-    console.log('===================');
 
     const { data } = (await orderchampGraphqlClient.rawRequest(doc, {
       input,
@@ -668,6 +670,17 @@ export async function createProduct(
   marketplaceStorefrontLabel?: string,
 ) {
   try {
+    const product = await prisma.platformProduct.findFirst({
+      where: {
+        platform: Platform.Orderchamp,
+        title: input.title,
+      },
+    });
+
+    if (product) {
+      return;
+    }
+
     const createProductDoc = gql`
       mutation ProductCreate($input: ProductCreateInput!) {
         productCreate(input: $input) {
@@ -705,10 +718,19 @@ export async function createProduct(
       }
     `;
 
+    const { variants, ...restInput } = input;
+
+    const mappedInput = {
+      ...restInput,
+      variants: variants.map(({ images, ...variant }) => ({
+        ...variant,
+      })),
+    };
+
     const { data } = (await orderchampGraphqlClient.rawRequest(
       createProductDoc,
       {
-        input,
+        input: mappedInput,
       },
     )) as {
       data: {
@@ -789,6 +811,44 @@ export async function createProduct(
 
     const productVariants = createdProduct.variants.nodes;
 
+    // const updateProductImagesDoc = gql`
+    //   mutation ProductVariantUpdate($id: ID!, $images: [ImageInput]) {
+    //     productVariantUpdate(input: { id: $id, images: $images }) {
+    //       userErrors {
+    //         field
+    //         message
+    //       }
+    //     }
+    //   }
+    // `;
+
+    // for (const variant of variants) {
+    //   const createdVariantId = productVariants?.find(
+    //     ({ sku }) => sku === variant.sku,
+    //   )?.id;
+
+    //   if (!createdVariantId || !variant.images.length) {
+    //     continue;
+    //   }
+
+    //   const { data: variantData } = (await orderchampGraphqlClient.rawRequest(
+    //     updateProductImagesDoc,
+    //     { id: createdVariantId, images: variant.images },
+    //   )) as {
+    //     data: {
+    //       productVariantUpdate: {
+    //         userErrors: UserError[];
+    //       };
+    //     };
+    //   };
+
+    //   const createImageErrors = variantData?.productVariantUpdate?.userErrors;
+
+    //   if (createImageErrors.length > 0) {
+    //     throw new Error(createImageErrors[0].message);
+    //   }
+    // }
+
     for (const variant of productVariants) {
       const parentProductVariant = parentProduct.variants.find(
         (parent) => parent.sku === variant.sku,
@@ -850,6 +910,13 @@ export async function syncProduct(
     ({ platform }) => platform === Platform.Orderchamp,
   );
 
+  const productFromDB = await prisma.platformProduct.findFirst({
+    where: {
+      platform: Platform.Orderchamp,
+      title: shopifyProduct.title,
+    },
+  });
+
   const isProductExist = await retrieveProductByID(
     orderchampPlatformProduct?.storefrontId || 'empty',
   );
@@ -871,11 +938,7 @@ export async function syncProduct(
     },
   );
 
-  console.log('\n\n\n\n====================');
-  console.log({ isProductExist });
-  console.log('====================\n\n\n\n');
-
-  if (!isProductExist) {
+  if (!isProductExist && !productFromDB) {
     const input: CreateProductInput = {
       title: shopifyProduct.title,
       description: shopifyProduct.descriptionHtml,

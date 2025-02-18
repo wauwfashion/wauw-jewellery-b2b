@@ -2,13 +2,11 @@ import { WebhookHandler } from '@/types';
 import { handleApiResponse } from '@/utils/api-response-handler';
 import { fullRemoveProduct } from '@/api/products/full-remove-product';
 import prisma from '@/db.server';
-import { authenticate } from '@/shopify.server';
 
-const action: WebhookHandler = async ({ webhookContext, request }) => {
-  const { payload } = webhookContext;
-
-  const { id: shopifyStorefrontProductId } = payload as { id: string };
-  const { admin } = await authenticate.admin(request);
+const action: WebhookHandler = async ({ request, shop, graphql }) => {
+  const { id: shopifyStorefrontProductId } = (await request.json()) as {
+    id: string;
+  };
 
   const response = await handleApiResponse(
     async () => {
@@ -16,19 +14,22 @@ const action: WebhookHandler = async ({ webhookContext, request }) => {
         where: {
           platformProducts: {
             some: {
-              storefrontId: {
-                equals: shopifyStorefrontProductId,
-              },
+              storefrontId: shopifyStorefrontProductId,
             },
           },
         },
+      });
+
+      console.log({
+        product: JSON.stringify(product, null, 2),
+        shopifyStorefrontProductId,
       });
 
       if (!product) {
         return null;
       }
 
-      await fullRemoveProduct(admin.graphql, product.id);
+      await fullRemoveProduct(graphql, product.id);
     },
     {
       onSuccess: {

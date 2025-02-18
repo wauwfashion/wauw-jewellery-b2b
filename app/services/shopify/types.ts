@@ -18,6 +18,7 @@ export interface ShopifyProductVariant {
   id: string;
   title: string;
   msrp?: string;
+  position?: number;
   sku: string;
   barcode?: string;
   price: string;
@@ -27,6 +28,10 @@ export interface ShopifyProductVariant {
     name: string;
     value: string;
   }[];
+  image?: {
+    id: string;
+    url: string;
+  };
   createdAt: Date;
   updatedAt: Date;
 }

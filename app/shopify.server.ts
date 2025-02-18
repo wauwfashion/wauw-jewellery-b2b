@@ -31,18 +31,6 @@ const shopify = shopifyApp({
       deliveryMethod: DeliveryMethod.Http,
       callbackUrl: '/webhooks',
     },
-    [WebhookTopic.PRODUCTS_CREATE]: {
-      deliveryMethod: DeliveryMethod.Http,
-      callbackUrl: '/webhooks',
-    },
-    [WebhookTopic.PRODUCTS_UPDATE]: {
-      deliveryMethod: DeliveryMethod.Http,
-      callbackUrl: '/webhooks',
-    },
-    [WebhookTopic.PRODUCTS_DELETE]: {
-      deliveryMethod: DeliveryMethod.Http,
-      callbackUrl: '/webhooks',
-    },
     [WebhookTopic.CUSTOMERS_DATA_REQUEST]: {
       deliveryMethod: DeliveryMethod.Http,
       callbackUrl: '/webhooks',
@@ -55,18 +43,30 @@ const shopify = shopifyApp({
       deliveryMethod: DeliveryMethod.Http,
       callbackUrl: '/webhooks',
     },
-    [WebhookTopic.ORDERS_CREATE]: {
-      deliveryMethod: DeliveryMethod.Http,
-      callbackUrl: '/webhooks',
-    },
-    [WebhookTopic.ORDERS_EDITED]: {
-      deliveryMethod: DeliveryMethod.Http,
-      callbackUrl: '/webhooks',
-    },
-    [WebhookTopic.ORDERS_DELETE]: {
-      deliveryMethod: DeliveryMethod.Http,
-      callbackUrl: '/webhooks',
-    },
+    // [WebhookTopic.PRODUCTS_CREATE]: {
+    //   deliveryMethod: DeliveryMethod.Http,
+    //   callbackUrl: '/webhooks',
+    // },
+    // [WebhookTopic.PRODUCTS_UPDATE]: {
+    //   deliveryMethod: DeliveryMethod.Http,
+    //   callbackUrl: '/webhooks',
+    // },
+    // [WebhookTopic.PRODUCTS_DELETE]: {
+    //   deliveryMethod: DeliveryMethod.Http,
+    //   callbackUrl: '/webhooks',
+    // },
+    // [WebhookTopic.ORDERS_CREATE]: {
+    //   deliveryMethod: DeliveryMethod.Http,
+    //   callbackUrl: '/webhooks',
+    // },
+    // [WebhookTopic.ORDERS_EDITED]: {
+    //   deliveryMethod: DeliveryMethod.Http,
+    //   callbackUrl: '/webhooks',
+    // },
+    // [WebhookTopic.ORDERS_DELETE]: {
+    //   deliveryMethod: DeliveryMethod.Http,
+    //   callbackUrl: '/webhooks',
+    // },
   },
   hooks: {
     afterAuth: async ({ session }) => {

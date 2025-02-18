@@ -8,6 +8,7 @@ import {
 import { IndexFiltersProps } from '@shopify/polaris';
 import { WebhookContext } from '@shopify/shopify-app-remix/server';
 import { mapPlatformProducts } from './utils/map-platform-products';
+import { AdminApiContextWithoutRest } from 'node_modules/@shopify/shopify-app-remix/dist/ts/server/clients';
 
 export enum WebhookTopic {
   PRODUCTS_CREATE = 'PRODUCTS_CREATE',
@@ -24,9 +25,15 @@ export enum WebhookTopic {
 }
 
 export type WebhookHandler = (args: {
-  webhookContext: WebhookContext;
+  // webhookContext: WebhookContext;
   request: Request;
+  graphql: AdminApiContextWithoutRest['graphql'];
+  shop: string;
 }) => Promise<Response | undefined>;
+// export type WebhookHandler = (args: {
+//   webhookContext: WebhookContext;
+//   request: Request;
+// }) => Promise<Response | undefined>;
 
 export type WebhookRecords = Partial<Record<WebhookTopic, WebhookHandler>>;
 

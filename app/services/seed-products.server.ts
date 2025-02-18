@@ -5,6 +5,8 @@ import * as orderchampProductsService from '@/services/orderchamp/products.serve
 import * as faireProductsService from '@/services/faire/products.server';
 import * as ankorstoreProductsService from '@/services/ankorstore/products.server';
 import prisma from '@/db.server';
+import { OrderchampProduct } from './orderchamp/types';
+import { FaireProduct } from './faire/types';
 
 export const seedProducts = async (storeDomain: string) => {
   try {
@@ -34,20 +36,24 @@ export const seedProducts = async (storeDomain: string) => {
     const allOrderchampProducts =
       await orderchampProductsService.retrieveAllProducts();
 
-    await orderchampProductsService.importOrderchampProducts(
-      allOrderchampProducts,
-      productsSkuMap,
-    );
+    if ((allOrderchampProducts || [])?.length > 0) {
+      await orderchampProductsService.importOrderchampProducts(
+        allOrderchampProducts as OrderchampProduct[],
+        productsSkuMap,
+      );
+    }
 
     const allFaireProducts = await faireProductsService.retrieveAllProducts();
 
-    await faireProductsService.importFaireProducts(
-      allFaireProducts,
-      productsSkuMap,
-    );
+    if ((allFaireProducts || [])?.length > 0) {
+      await faireProductsService.importFaireProducts(
+        allFaireProducts as FaireProduct[],
+        productsSkuMap,
+      );
+    }
 
     await ankorstoreProductsService.importProducts();
   } catch (err) {
-    throw err;
+    console.error('An error occurred while seeding products: ', err?.message);
   }
 };

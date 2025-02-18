@@ -50,32 +50,30 @@ export async function fullRemoveProduct(
       storefrontIdsByPlatform?.[Platform.Orderchamp] || '';
     const faireStorefrontId = storefrontIdsByPlatform?.[Platform.Faire] || '';
 
-    await prisma.$transaction(async (tx) => {
-      const variantIds = product.variants.map(({ id }) => id);
+    const variantIds = product.variants.map(({ id }) => id);
 
-      await tx.platformProductVariant.deleteMany({
-        where: {
-          productVariantId: { in: variantIds },
-        },
-      });
+    await prisma.platformProductVariant.deleteMany({
+      where: {
+        productVariantId: { in: variantIds },
+      },
+    });
 
-      await tx.productVariant.deleteMany({
-        where: {
-          productId: dbProductId,
-        },
-      });
+    await prisma.productVariant.deleteMany({
+      where: {
+        productId: dbProductId,
+      },
+    });
 
-      await tx.platformProduct.deleteMany({
-        where: {
-          productId: dbProductId,
-        },
-      });
+    await prisma.platformProduct.deleteMany({
+      where: {
+        productId: dbProductId,
+      },
+    });
 
-      await tx.product.delete({
-        where: {
-          id: dbProductId,
-        },
-      });
+    await prisma.product.delete({
+      where: {
+        id: dbProductId,
+      },
     });
 
     await shopifyProductService.removeProduct(
