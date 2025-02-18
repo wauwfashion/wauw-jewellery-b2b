@@ -5,6 +5,7 @@ import {
   MediaType,
   ShopifyProduct,
   Metafield,
+  ShopifyProductPayloadVariant,
 } from '@/services/shopify/types';
 import * as orderchampProductService from '@/services/orderchamp/products.server';
 import * as shopifyProductService from '@/services/shopify/products.server';
@@ -35,6 +36,61 @@ const action: WebhookHandler = async ({ request, shop, graphql }) => {
   if (isImmediatelyAfterProductCreate) {
     return new Response();
   }
+
+  const shopifyProductVariants =
+    await shopifyProductService.retrieveProductVariantsByProductID(
+      shopifyProduct.admin_graphql_api_id,
+    );
+
+  let currentProductVariants: Partial<ShopifyProductPayloadVariant>[] = [];
+
+  if ((shopifyProductVariants || [])?.length > shopifyProduct.variants.length) {
+    currentProductVariants = (shopifyProductVariants || []).map(
+      (variant, idx) => {
+        return {
+          admin_graphql_api_id: variant.id,
+          id: Number(variant.id.replace('gid://shopify/ProductVariant/', '')),
+          barcode: variant.barcode,
+          title: variant.title,
+          image_id: Number(variant.image?.id.split('/').at(-1)),
+          inventory_policy: variant.inventoryPolicy,
+          inventory_quantity: variant.inventoryQuantity,
+          position: variant.position || idx + 1,
+          price: variant.price,
+          sku: variant.sku,
+          product_id: shopifyProduct.id,
+          option1: variant.selectedOptions?.[0]?.value || undefined,
+          option2: variant.selectedOptions?.[1]?.value || undefined,
+          option3: variant.selectedOptions?.[2]?.value || undefined,
+          created_at: variant.createdAt,
+          updated_at: variant.updatedAt,
+        };
+      },
+    );
+  } else {
+    currentProductVariants = [...shopifyProduct.variants];
+  }
+
+  const groupedVariantOptions = (shopifyProductVariants || []).reduce(
+    (acc, variant) => {
+      variant.selectedOptions.forEach((option) => {
+        if (!acc[option.name]) {
+          acc[option.name] = [];
+        }
+        acc[option.name].push(option.value);
+      });
+
+      return acc;
+    },
+    {} as Record<string, string[]>,
+  );
+
+  const shopifyProductOptions = Object.keys(groupedVariantOptions).map(
+    (optionName) => ({
+      name: optionName,
+      values: groupedVariantOptions[optionName],
+    }),
+  );
 
   const metafieldKeys = Object.values(Metafield);
 
@@ -247,13 +303,15 @@ const action: WebhookHandler = async ({ request, shop, graphql }) => {
       0,
     ),
     variants: {
-      nodes: shopifyProduct.variants.map((variant) => {
+      nodes: currentProductVariants.map((currentVariant) => {
+        const variant = currentVariant as ShopifyProductPayloadVariant;
+
         const variantImage = shopifyProduct.images.find(
           (image) => String(image.id) === String(variant.image_id),
         );
 
         return {
-          id: variant.admin_graphql_api_id,
+          id: variant.admin_graphql_api_id as string,
           image: variantImage?.src
             ? {
                 id: variantImage.id,
@@ -261,11 +319,11 @@ const action: WebhookHandler = async ({ request, shop, graphql }) => {
               }
             : undefined,
           inventoryPolicy:
-            variant.inventory_policy.toUpperCase() as InventoryPolicy,
-          title: variant.title,
-          inventoryQuantity: variant.inventory_quantity,
-          price: platformPrice || variant.price,
-          sku: variant.sku,
+            variant.inventory_policy!.toUpperCase() as InventoryPolicy,
+          title: variant.title as string,
+          inventoryQuantity: variant.inventory_quantity!,
+          price: (platformPrice || variant.price) as string,
+          sku: variant.sku as string,
           msrp: String(Math.max(Number(variant.price), 0.01)),
           barcode: variant.barcode || '',
           selectedOptions: [

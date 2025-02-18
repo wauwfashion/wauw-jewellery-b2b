@@ -302,7 +302,7 @@ export async function createProduct(
   } catch (err) {
     console.error(
       'An error occurred while create product on Faire: ',
-      err?.message,
+      err?.response?.message || err?.message,
     );
   }
 }

@@ -93,22 +93,6 @@ const action: WebhookHandler = async ({ request, shop, graphql }) => {
       }),
     );
 
-    // console.log({
-    //   currentProductVariantsCount: JSON.stringify(
-    //     currentProductVariants,
-    //     null,
-    //     2,
-    //   ),
-    // });
-
-    // console.log({
-    //   shopifyProductOptions: JSON.stringify(
-    //     shopifyProductOptions,
-    //     null,
-    //     2,
-    //   ),
-    // });
-
     console.log('=======');
     console.log(`Received PRODUCTS_CREATE webhook for ${shop}`);
     console.log('=======');
@@ -125,8 +109,8 @@ const action: WebhookHandler = async ({ request, shop, graphql }) => {
       data: {
         storeDomain: shop,
         totalInventory,
-        variantsCount: shopifyProduct.variants.length,
-        hasOnlyDefaultVariant: shopifyProduct.variants.length < 2,
+        variantsCount: currentProductVariants.length,
+        hasOnlyDefaultVariant: currentProductVariants.length < 2,
         shopifyStorefrontId: shopifyProduct.admin_graphql_api_id,
       },
     });
@@ -151,13 +135,13 @@ const action: WebhookHandler = async ({ request, shop, graphql }) => {
       },
     });
 
-    for (const variant of shopifyProduct.variants) {
+    for (const variant of currentProductVariants) {
       const createdVariant = await prisma.productVariant.create({
         data: {
           product: { connect: { id: createdProduct.id } },
           sku: variant.sku || `${variant.id}-temp-sku`,
-          inventoryQuantity: variant.inventory_quantity,
-          shopifyVariantStorefrontId: variant.admin_graphql_api_id,
+          inventoryQuantity: variant.inventory_quantity!,
+          shopifyVariantStorefrontId: variant.admin_graphql_api_id!,
           shopifyProductStorefrontId: shopifyProduct.admin_graphql_api_id,
           createdAt: variant.created_at,
           updatedAt: variant.updated_at,
@@ -169,8 +153,8 @@ const action: WebhookHandler = async ({ request, shop, graphql }) => {
       await prisma.platformProductVariant.create({
         data: {
           productVariant: { connect: { id: createdVariant.id } },
-          storefrontId: variant.admin_graphql_api_id,
-          title: variant.title,
+          storefrontId: variant.admin_graphql_api_id!,
+          title: variant.title!,
           price: variant.price,
           barcode: variant.barcode,
           platform: Platform.Shopify,
@@ -372,9 +356,13 @@ const action: WebhookHandler = async ({ request, shop, graphql }) => {
         createFaireProductInputVariantsCount: input.variants.length,
       });
       console.log({
-        createFaireProductInputVariants: input.variants.map((variant) => ({
-          options: variant.options,
-        })),
+        createFaireProductInputVariants: JSON.stringify(
+          input.variants.map((variant) => ({
+            options: variant.options,
+          })),
+          null,
+          2,
+        ),
       });
       console.log({ createFaireProductInput: JSON.stringify(input, null, 2) });
 
