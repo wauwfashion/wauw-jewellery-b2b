@@ -6,25 +6,28 @@ embedded = true
 name = "B2B Platforms Integration"
 handle = "b2b-platforms-integration"
 
+[build]
+include_config_on_deploy = true
+
 [webhooks]
 api_version = "2025-01"
 
   [[webhooks.subscriptions]]
   topics = [
-   "app/scopes_update",
-    "app/uninstalled",
-    "orders/create",
-    "orders/delete",
-    "orders/edited",
-    "products/create",
-    "products/delete",
-    "products/update"
+  "app/scopes_update",
+  "app/uninstalled",
+  "orders/create",
+  "orders/delete",
+  "orders/edited",
+  "products/create",
+  "products/delete",
+  "products/update"
 ]
   uri = "/webhooks"
 
 [access_scopes]
 # Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
-scopes = "read_inventory,read_orders,read_products,write_inventory,write_orders,write_products,read_locations,write_locations,read_metaobjects,read_customers"
+scopes = "read_customers,read_inventory,read_locations,read_metaobjects,read_orders,read_products,write_inventory,write_locations,write_orders,write_products"
 
 [auth]
 redirect_urls = [
@@ -35,6 +38,3 @@ redirect_urls = [
 
 [pos]
 embedded = false
-
-[build]
-include_config_on_deploy = true

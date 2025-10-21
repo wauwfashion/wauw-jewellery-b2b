@@ -30,9 +30,8 @@ export async function getPaginatedOrders(query?: QueryParams) {
 
   const unfulfilledOrders = await prisma.order.findMany({
     where: {
-      fulfillmentStatus: {
-        not: OrderFulfillmentStatus.FULFILLED,
-      },
+      fulfillmentStatus: OrderFulfillmentStatus.UNFULFILLED,
+      isCancelled: false,
     },
   });
 

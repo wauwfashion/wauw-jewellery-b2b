@@ -100,6 +100,7 @@ export interface ShopifyOrder {
       currencyCode: string;
     };
   };
+  cancelledAt: Date | null
   displayFulfillmentStatus: OrderFulfillmentStatus;
   displayFinancialStatus: OrderPaymentStatus;
   tags: string[];

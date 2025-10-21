@@ -40,7 +40,9 @@ export interface OrderchampOrder {
   customer?: {
     email?: string | null;
   };
+  email: string | null;
   totalPrice: string;
+  isCancelled: boolean;
   currency: string;
   status: string;
   isFulfilled: boolean;

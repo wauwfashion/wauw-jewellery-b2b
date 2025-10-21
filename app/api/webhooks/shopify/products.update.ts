@@ -33,6 +33,11 @@ const action: WebhookHandler = async ({ request, shop, graphql }) => {
       1000 <
     5;
 
+  console.log({
+    isImmediatelyAfterProductCreate,
+    shopifyProductName: shopifyProduct.title,
+  });
+
   if (isImmediatelyAfterProductCreate) {
     return new Response();
   }
@@ -375,6 +380,24 @@ const action: WebhookHandler = async ({ request, shop, graphql }) => {
     createdAt: shopifyProduct.created_at,
     updatedAt: shopifyProduct.updated_at,
   };
+
+  console.log('===============\n\n\n');
+  console.log({
+    currentProductVariants: JSON.stringify(currentProductVariants),
+  });
+  console.log('===============\n\n\n');
+  console.log({
+    shopifyProductVariantsGraphql: JSON.stringify(shopifyProductVariants),
+  });
+  console.log('===============\n\n\n');
+  console.log({
+    shopifyProductVariants: JSON.stringify(shopifyProduct.variants),
+  });
+  console.log('===============\n\n\n');
+  console.log({
+    mappedShopifyProduct: JSON.stringify(mappedShopifyProduct),
+  });
+  console.log('===============\n\n\n');
 
   const platformMetadata = (metafields[Metafield.Platforms] ||
     []) as Platform[];

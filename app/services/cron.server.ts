@@ -12,6 +12,156 @@ import { Platform, ProductWhereInput } from '@/types';
 import { OrderFulfillmentStatus, OrderPaymentStatus } from '@prisma/client';
 import { AnkorstoreOrder } from './ankorstore/types';
 
+// export async function updateProductsQuantity(type?: 'full' | 'part') {
+//   try {
+//     console.log('\n\n=========');
+//     console.log('Start update products quantity');
+//     console.log('=========\n\n');
+
+//     const stores = await prisma.store.findMany();
+
+//     if (!stores.length) {
+//       return;
+//     }
+
+//     for (const store of stores) {
+//       const where: ProductWhereInput = {
+//         storeDomain: store.domain,
+//       };
+
+//       if (type === 'part') {
+//         where.updatedAt = {
+//           lte: store.lastProductsSyncAt,
+//         };
+//       }
+
+//       const products = await prisma.product.findMany({
+//         where,
+//         include: {
+//           variants: {
+//             include: {
+//               platformProductVariants: true,
+//             },
+//           },
+//         },
+//       });
+
+//       for (const product of products) {
+//         let newProductInventory = 0;
+
+//         for (const variant of product.variants) {
+//           const prevVariantQuantity = variant.inventoryQuantity;
+
+//           const shopifyPlatformVariant = variant.platformProductVariants.find(
+//             ({ platform }) => platform === Platform.Shopify,
+//           );
+//           const orderchampPlatformVariant =
+//             variant.platformProductVariants.find(
+//               ({ platform }) => platform === Platform.Orderchamp,
+//             );
+//           const fairePlatformVariant = variant.platformProductVariants.find(
+//             ({ platform }) => platform === Platform.Faire,
+//           );
+
+//           const shopifyVariantData = shopifyPlatformVariant?.storefrontId
+//             ? await shopifyProductService.retrieveProductVariantByID(
+//                 shopifyPlatformVariant?.storefrontId || '',
+//               )
+//             : null;
+//           const orderchampVariantData = orderchampPlatformVariant?.storefrontId
+//             ? await orderchampProductService.retrieveProductVariantByID(
+//                 orderchampPlatformVariant?.storefrontId || '',
+//               )
+//             : null;
+//           const faireVariantData = fairePlatformVariant?.storefrontId
+//             ? await faireProductService.retrieveProductVariantInventoryByID(
+//                 fairePlatformVariant?.storefrontId || '',
+//               )
+//             : null;
+//           const ankorstoreVariantData = variant.sku
+//             ? await ankorstoreProductService.retrieveProductVariantByProductName(
+//                 variant.sku,
+//               )
+//             : null;
+
+//           const newVariantQuantity =
+//             (shopifyVariantData?.inventoryQuantity || 0) +
+//             (orderchampVariantData?.inventoryQuantity || 0) +
+//             (faireVariantData
+//               ? faireVariantData[fairePlatformVariant?.storefrontId || '']
+//                   .available_quantity?.quantity || 0
+//               : 0) +
+//             (ankorstoreVariantData?.data?.[0]?.attributes?.stockQuantity || 0);
+
+//           const newQuantity = Math.max(
+//             0,
+//             newVariantQuantity > 0
+//               ? prevVariantQuantity * 4 - newVariantQuantity
+//               : newVariantQuantity,
+//           );
+
+//           newProductInventory += newQuantity;
+
+//           await prisma.productVariant.update({
+//             where: {
+//               id: variant.id,
+//             },
+//             data: {
+//               inventoryQuantity: newQuantity,
+//             },
+//           });
+
+//           if (shopifyVariantData) {
+//             await shopifyProductService.updateProductQuantity(
+//               shopifyVariantData.inventoryItem.id,
+//               newQuantity - shopifyVariantData.inventoryQuantity,
+//             );
+//           }
+
+//           if (orderchampPlatformVariant?.storefrontId) {
+//             await orderchampProductService.updateProductVariantQuantity(
+//               orderchampPlatformVariant?.storefrontId || '',
+//               newQuantity,
+//             );
+//           }
+
+//           if (fairePlatformVariant?.storefrontId) {
+//             await faireProductService.updateProductQuantity({
+//               inventories: [
+//                 {
+//                   product_variant_id: fairePlatformVariant?.storefrontId || '',
+//                   on_hand_quantity: newQuantity,
+//                 },
+//               ],
+//             });
+//           }
+
+//           if (ankorstoreVariantData?.data?.[0]?.id) {
+//             await ankorstoreProductService.updateProductQuantity(
+//               ankorstoreVariantData?.data?.[0]?.id || '',
+//               newQuantity,
+//             );
+//           }
+//         }
+
+//         await prisma.product.update({
+//           where: {
+//             id: product.id,
+//           },
+//           data: {
+//             totalInventory: Math.max(newProductInventory, 0),
+//           },
+//         });
+//       }
+//     }
+//   } catch (err) {
+//     console.error(
+//       'An error occurred while update products quantity: ',
+//       err?.message,
+//     );
+//   }
+// }
+
 export async function updateProductsQuantity(type?: 'full' | 'part') {
   try {
     console.log('\n\n=========');
@@ -65,17 +215,17 @@ export async function updateProductsQuantity(type?: 'full' | 'part') {
 
           const shopifyVariantData = shopifyPlatformVariant?.storefrontId
             ? await shopifyProductService.retrieveProductVariantByID(
-                shopifyPlatformVariant?.storefrontId || '',
+                shopifyPlatformVariant.storefrontId,
               )
             : null;
           const orderchampVariantData = orderchampPlatformVariant?.storefrontId
             ? await orderchampProductService.retrieveProductVariantByID(
-                orderchampPlatformVariant?.storefrontId || '',
+                orderchampPlatformVariant.storefrontId,
               )
             : null;
           const faireVariantData = fairePlatformVariant?.storefrontId
             ? await faireProductService.retrieveProductVariantInventoryByID(
-                fairePlatformVariant?.storefrontId || '',
+                fairePlatformVariant.storefrontId,
               )
             : null;
           const ankorstoreVariantData = variant.sku
@@ -96,29 +246,9 @@ export async function updateProductsQuantity(type?: 'full' | 'part') {
           const newQuantity = Math.max(
             0,
             newVariantQuantity > 0
-              ? prevVariantQuantity * 4 - newVariantQuantity
+              ? newVariantQuantity - prevVariantQuantity * 3
               : newVariantQuantity,
           );
-
-          if (newQuantity > 100) {
-            console.log('==========================');
-            console.log({
-              variant: variant.id,
-              prevVariantQuantity,
-              newVariantQuantity,
-              shopifyVariantData: shopifyVariantData?.inventoryQuantity || 0,
-              orderchampVariantData:
-                orderchampVariantData?.inventoryQuantity || 0,
-              faireVariantData: faireVariantData
-                ? faireVariantData[fairePlatformVariant?.storefrontId || '']
-                    .available_quantity?.quantity || 0
-                : 0,
-              ankorstoreVariantData:
-                ankorstoreVariantData?.data?.[0]?.attributes?.stockQuantity ||
-                0,
-            });
-            console.log('==========================');
-          }
 
           newProductInventory += newQuantity;
 
@@ -140,7 +270,7 @@ export async function updateProductsQuantity(type?: 'full' | 'part') {
 
           if (orderchampPlatformVariant?.storefrontId) {
             await orderchampProductService.updateProductVariantQuantity(
-              orderchampPlatformVariant?.storefrontId || '',
+              orderchampPlatformVariant.storefrontId,
               newQuantity,
             );
           }
@@ -149,24 +279,20 @@ export async function updateProductsQuantity(type?: 'full' | 'part') {
             await faireProductService.updateProductQuantity({
               inventories: [
                 {
-                  product_variant_id: fairePlatformVariant?.storefrontId || '',
+                  product_variant_id: fairePlatformVariant.storefrontId,
                   on_hand_quantity: newQuantity,
                 },
               ],
             });
           }
 
-          if (ankorstoreVariantData?.data?.[0]?.id) {
-            await ankorstoreProductService.updateProductQuantity(
-              ankorstoreVariantData?.data?.[0]?.id || '',
-              newQuantity,
-            );
-          }
+          // if (ankorstoreVariantData?.data?.[0]?.id) {
+          //   await ankorstoreProductService.updateProductQuantity(
+          //     ankorstoreVariantData.data[0].id,
+          //     newQuantity,
+          //   );
+          // }
         }
-
-        console.log('==========================');
-        console.log({ product: product.id, newProductInventory });
-        console.log('==========================');
 
         await prisma.product.update({
           where: {
@@ -200,10 +326,6 @@ async function syncOrders() {
     }
 
     const shopifyOrders = await shopifyOrdersService.retrieveAllOrders();
-    const orderchampOrders = await orderchampOrdersService.retrieveAllOrders();
-    const faireOrders = await faireOrdersService.retrieveAllOrders();
-    const ankorstoreOrders = await ankorstoreOrdersService.retrieveAllOrders();
-
     for (const order of shopifyOrders) {
       const orderId = order.id?.replace('gid://shopify/Order/', '') || '';
       const shopifyStoreDomain =
@@ -214,6 +336,7 @@ async function syncOrders() {
           storefrontId: order.id,
         },
         create: {
+          isCancelled: !!order.cancelledAt,
           storeDomain: storeDomain,
           customer: order.customer?.email || '-',
           fulfillmentStatus: order.displayFulfillmentStatus,
@@ -230,6 +353,7 @@ async function syncOrders() {
           updatedAt: order.updatedAt,
         },
         update: {
+          isCancelled: !!order.cancelledAt,
           paymentStatus: order.displayFinancialStatus,
           totalPrice: order.currentTotalPriceSet.shopMoney.amount,
           fulfillmentStatus: order.displayFulfillmentStatus,
@@ -239,14 +363,33 @@ async function syncOrders() {
       });
     }
 
+    const orderchampOrders = await orderchampOrdersService.retrieveAllOrders();
     for (const order of orderchampOrders) {
       const sourceUrl = `https://www.orderchamp.com/backoffice/orders?query=${order.number}`;
+
+      const fulfillmentStatus = {
+        ATTENTION_REQUIRED: OrderFulfillmentStatus.IN_PROGRESS,
+        AWAITING_CONFIRMATION: OrderFulfillmentStatus.UNFULFILLED,
+        AWAITING_DELIVERY: OrderFulfillmentStatus.PENDING_FULFILLMENT,
+        AWAITING_DROP_OFF: OrderFulfillmentStatus.SCHEDULED,
+        AWAITING_FULFILMENT: OrderFulfillmentStatus.PENDING_FULFILLMENT,
+        AWAITING_ORDERCHAMP_APPROVAL: OrderFulfillmentStatus.IN_PROGRESS,
+        AWAITING_PAYMENT: OrderFulfillmentStatus.IN_PROGRESS,
+        AWAITING_SHIPMENT: OrderFulfillmentStatus.IN_PROGRESS,
+        BLOCKED: OrderFulfillmentStatus.ON_HOLD,
+        CANCELLATION_REQUESTED: OrderFulfillmentStatus.ON_HOLD,
+        CANCELLED: OrderFulfillmentStatus.RESTOCKED,
+        COMPLETED: OrderFulfillmentStatus.FULFILLED,
+        FULFILMENT_IN_PROGRESS: OrderFulfillmentStatus.PENDING_FULFILLMENT,
+        ISSUE_REPORTED: OrderFulfillmentStatus.ON_HOLD,
+      } as const;
 
       await prisma.order.upsert({
         where: {
           storefrontId: order.id,
         },
         create: {
+          isCancelled: order.isCancelled,
           storeDomain,
           customer: order.customer?.email || '-',
           name: order.number,
@@ -262,33 +405,33 @@ async function syncOrders() {
           paymentStatus: order.isPaid
             ? OrderPaymentStatus.PAID
             : OrderPaymentStatus.PENDING,
-          fulfillmentStatus: order.isFulfilled
-            ? OrderFulfillmentStatus.FULFILLED
-            : OrderFulfillmentStatus.UNFULFILLED,
+          fulfillmentStatus:
+            fulfillmentStatus[order.status as keyof typeof fulfillmentStatus],
         },
         update: {
+          isCancelled: order.isCancelled,
           paymentStatus: order.isPaid
             ? OrderPaymentStatus.PAID
             : OrderPaymentStatus.PENDING,
-          fulfillmentStatus: order.isFulfilled
-            ? OrderFulfillmentStatus.FULFILLED
-            : OrderFulfillmentStatus.UNFULFILLED,
+          fulfillmentStatus:
+            fulfillmentStatus[order.status as keyof typeof fulfillmentStatus],
           totalPrice: +(+order.totalPrice || 0).toFixed(2),
           updatedAt: order.updatedAt,
         },
       });
     }
 
+    const faireOrders = await faireOrdersService.retrieveAllOrders();
     for (const order of faireOrders) {
       const faireState = {
-        NEW: OrderFulfillmentStatus.OPEN,
-        PROCESSING: OrderFulfillmentStatus.IN_PROGRESS,
+        NEW: OrderFulfillmentStatus.UNFULFILLED,
+        PROCESSING: OrderFulfillmentStatus.UNFULFILLED,
         PRE_TRANSIT: OrderFulfillmentStatus.PARTIALLY_FULFILLED,
         IN_TRANSIT: OrderFulfillmentStatus.PENDING_FULFILLMENT,
         DELIVERED: OrderFulfillmentStatus.FULFILLED,
         PENDING_RETAILER_CONFIRMATION: OrderFulfillmentStatus.IN_PROGRESS,
         BACKORDERED: OrderFulfillmentStatus.RESTOCKED,
-        CANCELED: OrderFulfillmentStatus.UNFULFILLED,
+        CANCELED: OrderFulfillmentStatus.RESTOCKED,
       };
 
       await prisma.order.upsert({
@@ -296,6 +439,7 @@ async function syncOrders() {
           storefrontId: order.id,
         },
         create: {
+          isCancelled: order.state === 'CANCELED',
           storeDomain,
           platform: Platform.Faire,
           customer: order?.address?.name || '-',
@@ -318,6 +462,7 @@ async function syncOrders() {
             : OrderPaymentStatus.PENDING,
         },
         update: {
+          isCancelled: order.state === 'CANCELED',
           // @ts-ignore
           fulfillmentStatus: faireState[order.state] as OrderFulfillmentStatus,
           paymentStatus: order?.payment_initiated_at
@@ -332,6 +477,7 @@ async function syncOrders() {
       });
     }
 
+    const ankorstoreOrders = await ankorstoreOrdersService.retrieveAllOrders();
     for (const order of ankorstoreOrders) {
       const orderPaymentStatus: Record<
         AnkorstoreOrder['attributes']['status'],
@@ -357,7 +503,7 @@ async function syncOrders() {
         OrderFulfillmentStatus
       > = {
         DELIVERED: OrderFulfillmentStatus.FULFILLED,
-        FAILURE: OrderFulfillmentStatus.UNFULFILLED,
+        FAILURE: OrderFulfillmentStatus.RESTOCKED,
         PRE_TRANSIT: OrderFulfillmentStatus.IN_PROGRESS,
         RETURNED: OrderFulfillmentStatus.RESTOCKED,
         TRANSIT: OrderFulfillmentStatus.ON_HOLD,
@@ -369,6 +515,7 @@ async function syncOrders() {
           storefrontId: order.id,
         },
         create: {
+          isCancelled: order.attributes.status === 'cancelled',
           storeDomain,
           platform: Platform.Ankorstore,
           customer:
@@ -394,6 +541,7 @@ async function syncOrders() {
           paymentStatus: orderPaymentStatus[order.attributes.status],
         },
         update: {
+          isCancelled: order.attributes.status === 'cancelled',
           fulfillmentStatus:
             orderFulfillmentStatus[
               order?.attributes?.shippingOverview?.transaction?.currentStatus
@@ -415,5 +563,8 @@ async function syncOrders() {
 
 export function startCronSync() {
   cron.schedule('*/30 * * * *', () => updateProductsQuantity());
-  cron.schedule('*/30 * * * *', () => syncOrders());
+  cron.schedule('*/15 * * * *', () => syncOrders());
+  cron.schedule('*/1 * * * *', () => {
+    console.log("\n\n=========DON'T SLEEP==========\n\n");
+  });
 }

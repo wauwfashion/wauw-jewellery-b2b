@@ -2,31 +2,54 @@ import { ankorstoreApiClient } from './api-client';
 import { AnkorstoreOrder, AnkorstoreOrdersResponse } from './types';
 
 export async function retrieveChunkOfOrders(limit = 50, afterCursor?: string) {
-  const { data: ordersResponse } =
-    await ankorstoreApiClient.get<AnkorstoreOrdersResponse>(
-      `/master-orders?include=internalOrder&page[after]=${afterCursor}&page[limit]=${limit}`,
-    );
+  try {
+    const { data: ordersResponse } =
+      await ankorstoreApiClient.get<AnkorstoreOrdersResponse>(
+        `/master-orders?include=internalOrder&page[after]=${afterCursor}&page[limit]=${limit}`,
+      );
 
-  return ordersResponse;
+    return ordersResponse;
+  } catch (err) {
+    console.error(
+      'An error occurred while retrieving chunk of Ankorstore orders: ',
+      err?.message,
+    );
+  }
 }
 
 export async function retrieveAllOrders() {
-  const limit = 50;
-  let cursor = '';
-  let hasNextPage = true;
-  let ordersData: AnkorstoreOrder[] = [];
+  try {
+    const limit = 50;
+    let cursor = '';
+    let hasNextPage = true;
+    let ordersData: AnkorstoreOrder[] = [];
 
-  while (hasNextPage) {
-    const ordersChunk = await retrieveChunkOfOrders(limit, cursor);
+    while (hasNextPage) {
+      const ordersChunk = await retrieveChunkOfOrders(limit, cursor);
 
-    ordersData = [...ordersData, ...ordersChunk.included];
+      if (!ordersChunk) {
+        return ordersData;
+      }
 
-    if (ordersChunk.included.length < limit || !ordersChunk.meta.page.hasMore) {
-      hasNextPage = false;
+      ordersData = [...ordersData, ...ordersChunk.included];
+
+      if (
+        ordersChunk.included.length < limit ||
+        !ordersChunk.meta.page.hasMore
+      ) {
+        hasNextPage = false;
+      }
+
+      cursor = ordersChunk.meta.page.to;
     }
 
-    cursor = ordersChunk.meta.page.to;
-  }
+    return ordersData;
+  } catch (err) {
+    console.error(
+      'An error occurred while retrieving all of Ankorstore orders: ',
+      err?.message,
+    );
 
-  return ordersData;
+    return [];
+  }
 }

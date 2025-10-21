@@ -51,6 +51,7 @@ export async function retrieveChunkOfOrders({
                 currencyCode
               }
             }
+            cancelledAt
             displayFulfillmentStatus
             displayFinancialStatus
             tags

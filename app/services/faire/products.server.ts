@@ -43,6 +43,10 @@ export async function retrieveAllProducts() {
     while (hasNextPage) {
       const productsChunk = await retrieveChunkOfProducts(page, limit);
 
+      if (!productsChunk) {
+        continue;
+      }
+
       productsData = [...productsData, ...productsChunk.products];
 
       if (productsChunk.products.length < limit) {
@@ -81,11 +85,18 @@ export async function removeProduct(id: string) {
 }
 
 export async function retrieveProductByID(id: string) {
-  const { data } = await faireApiClient.get<FaireProduct | null>(
-    `/products/${id}`,
-  );
+  try {
+    const { data } = await faireApiClient.get<FaireProduct | null>(
+      `/products/${id}`,
+    );
 
-  return data;
+    return data;
+  } catch (err) {
+    console.error(
+      'An error occurred while retrieving Faire product: ',
+      err?.message,
+    );
+  }
 }
 
 export async function removeProductVariant(
@@ -242,6 +253,9 @@ export async function createProduct(
         title: input.name,
       },
     });
+    console.log('\n\n=====================');
+
+    console.log({ productExist: !!product, title: product?.title });
 
     if (product) {
       return;
@@ -252,8 +266,32 @@ export async function createProduct(
       input,
     );
 
-    await prisma.platformProduct.create({
-      data: {
+    console.log({
+      inputVariants: JSON.stringify(input.variants, null, 2),
+      inputVariantsSets: JSON.stringify(input.variant_option_sets, null, 2),
+      createdProduct: JSON.stringify(createdProduct, null, 2),
+    });
+    console.log('=====================\n\n');
+
+    if (!createdProduct) {
+      return;
+    }
+
+    await prisma.platformProduct.upsert({
+      where: {
+        storefrontId: createdProduct.id,
+      },
+      update: {
+        title: createdProduct.name,
+        description: createdProduct.description,
+        status:
+          createdProduct?.lifecycle_state === 'PUBLISHED'
+            ? ProductStatus.ACTIVE
+            : ProductStatus.DRAFT,
+        createdAt: createdProduct.created_at,
+        updatedAt: createdProduct.updated_at,
+      },
+      create: {
         product: { connect: { id: parentProduct.id } },
         category: createdProduct?.taxonomy_type?.name || 'Uncategorized',
         title: createdProduct.name,
@@ -266,10 +304,27 @@ export async function createProduct(
           createdProduct?.lifecycle_state === 'PUBLISHED'
             ? ProductStatus.ACTIVE
             : ProductStatus.DRAFT,
-        createdAt: createdProduct.created_at,
         updatedAt: createdProduct.updated_at,
       },
     });
+    // await prisma.platformProduct.create({
+    //   data: {
+    //     product: { connect: { id: parentProduct.id } },
+    //     category: createdProduct?.taxonomy_type?.name || 'Uncategorized',
+    //     title: createdProduct.name,
+    //     tags: [],
+    //     platform: Platform.Faire,
+    //     storefrontId: createdProduct.id,
+    //     sourceUrl: `https://www.faire.com/brand-portal/my-shop/products/${createdProduct.id}`,
+    //     description: createdProduct.description,
+    //     status:
+    //       createdProduct?.lifecycle_state === 'PUBLISHED'
+    //         ? ProductStatus.ACTIVE
+    //         : ProductStatus.DRAFT,
+    //     createdAt: createdProduct.created_at,
+    //     updatedAt: createdProduct.updated_at,
+    //   },
+    // });
 
     for (const variant of createdProduct.variants) {
       const parentProductVariant = parentProduct.variants.find(
@@ -280,8 +335,20 @@ export async function createProduct(
         continue;
       }
 
-      await prisma.platformProductVariant.create({
-        data: {
+      await prisma.platformProductVariant.upsert({
+        where: {
+          platform: Platform.Faire,
+          storefrontId: variant.id,
+        },
+        update: {
+          title: variant.name,
+          barcode: variant.product_id || '',
+          price: (
+            (variant?.prices?.[0].wholesale_price.amount_minor || 100) / 100
+          ).toFixed(2),
+          updatedAt: variant.updated_at,
+        },
+        create: {
           platform: Platform.Faire,
           storefrontId: variant.id,
           title: variant.name,
@@ -298,12 +365,33 @@ export async function createProduct(
           updatedAt: variant.updated_at,
         },
       });
+      // await prisma.platformProductVariant.create({
+      //   data: {
+      //     platform: Platform.Faire,
+      //     storefrontId: variant.id,
+      //     title: variant.name,
+      //     barcode: variant.product_id || '',
+      //     price: (
+      //       (variant?.prices?.[0].wholesale_price.amount_minor || 100) / 100
+      //     ).toFixed(2),
+      //     productVariant: {
+      //       connect: {
+      //         id: parentProductVariant.id,
+      //       },
+      //     },
+      //     createdAt: variant.created_at,
+      //     updatedAt: variant.updated_at,
+      //   },
+      // });
     }
   } catch (err) {
+    console.log('===============\n\n\n');
+    console.log('Faire create product ERROR > ', JSON.stringify(err));
     console.error(
       'An error occurred while create product on Faire: ',
       err?.response?.message || err?.message,
     );
+    console.log('===============\n\n\n');
   }
 }
 
@@ -454,22 +542,59 @@ export async function syncProduct(
       ({ platform }) => platform === Platform.Faire,
     );
 
-    const existedProduct = await retrieveProductByID(
-      fairePlatformProduct?.storefrontId || 'empty',
-    );
+    let existedProduct = null;
 
-    // const faireProductVariants = productWithVariants.variants
-    //   .flatMap(({ platformProductVariants, shopifyVariantStorefrontId }) =>
-    //     platformProductVariants.map((variant) => ({
-    //       ...variant,
-    //       shopifyVariantStorefrontId,
-    //     })),
-    //   )
-    //   .filter(({ platform }) => platform === Platform.Faire);
+    if (fairePlatformProduct && fairePlatformProduct?.storefrontId) {
+      existedProduct = await retrieveProductByID(
+        fairePlatformProduct.storefrontId,
+      );
+    }
+
+    console.log('\n\n\n====================');
+    console.log('FAIRE SYNC PRODUCT');
+    console.log({
+      existedProduct,
+      fairePlatformProduct,
+      productWithVariants,
+      shopifyProduct,
+    });
+    console.log('====================\n\n\n');
 
     if (existedProduct) {
-      const generalProductVariants = productWithVariants.variants;
+      const generalProductVariants = productWithVariants?.variants || [];
 
+      await removeProduct(existedProduct.id);
+
+      // for (const variant of generalProductVariants) {
+      //   const faireVariant = variant.platformProductVariants.find(
+      //     ({ platform }) => platform === Platform.Faire,
+      //   );
+
+      //   if (!faireVariant) {
+      //     continue;
+      //   }
+
+      //   const existingVariant = await prisma.platformProductVariant.findUnique({
+      //     where: { id: faireVariant.id },
+      //   });
+
+      //   if (!existingVariant) {
+      //     continue;
+      //   }
+
+      //   await prisma.platformProductVariant.delete({
+      //     where: {
+      //       id: existingVariant.id,
+      //     },
+      //   });
+      // }
+
+      // await prisma.platformProduct.delete({
+      //   where: {
+      //     platform: Platform.Faire,
+      //     id: fairePlatformProduct?.id || '',
+      //   },
+      // });
       for (const variant of generalProductVariants) {
         const faireVariant = variant.platformProductVariants.find(
           ({ platform }) => platform === Platform.Faire,
@@ -479,22 +604,29 @@ export async function syncProduct(
           continue;
         }
 
-        await prisma.platformProductVariant.delete({
-          where: {
-            id: faireVariant?.id || '',
-          },
+        await prisma.platformProductVariant.deleteMany({
+          where: { id: faireVariant.id },
         });
       }
 
-      await prisma.platformProduct.delete({
-        where: {
-          platform: Platform.Faire,
-          id: fairePlatformProduct?.id || '',
-        },
-      });
-
-      await removeProduct(existedProduct.id);
+      if (fairePlatformProduct?.id) {
+        await prisma.platformProduct.delete({
+          where: {
+            platform: Platform.Faire,
+            id: fairePlatformProduct?.id || '',
+          },
+        });
+      }
     }
+
+    // const faireProductVariants = productWithVariants.variants
+    //   .flatMap(({ platformProductVariants, shopifyVariantStorefrontId }) =>
+    //     platformProductVariants.map((variant) => ({
+    //       ...variant,
+    //       shopifyVariantStorefrontId,
+    //     })),
+    //   )
+    //   .filter(({ platform }) => platform === Platform.Faire);
 
     const shopifyImages = shopifyProduct.media.nodes.filter(
       (media) => media.mediaContentType === MediaType.IMAGE,
@@ -509,6 +641,7 @@ export async function syncProduct(
     const input: CreateFaireProductInput = {
       name: shopifyProduct.title,
       description: escapeHTML(shopifyProduct.descriptionHtml),
+      // idempotence_token: shopifyProduct.id,
       idempotence_token: `${uuidV4()}-${shopifyProduct.id}`,
       lifecycle_state:
         shopifyProduct.status.toUpperCase() === ProductStatus.ACTIVE &&
@@ -570,6 +703,7 @@ export async function syncProduct(
 
         return {
           // id: storefrontId,
+          // idempotence_token: variant.id,
           idempotence_token: `${uuidV4()}-${variant.id}`,
           images: variant.image ? [{ url: variant.image.url }] : undefined,
           lifecycle_state:
@@ -609,9 +743,14 @@ export async function syncProduct(
     }
 
     console.log({
-      inputVariants: JSON.stringify(
-        input.variants.map((variant) => ({
-          options: variant.options,
+      inputVariants: JSON.stringify(input.variants),
+      shopifyProductOptions: JSON.stringify(shopifyProduct.options),
+      shopifyProductVariantsSelectedOptions: JSON.stringify(
+        shopifyProduct.variants.nodes.map((variant) => ({
+          id: variant.id,
+          title: variant.title,
+          selectedOptions: variant.selectedOptions,
+          sku: variant.sku,
         })),
       ),
     });

@@ -19,6 +19,7 @@ export async function seedOrders(store: string) {
     await prisma.order.create({
       data: {
         storeDomain: store,
+        isCancelled: !!order.cancelledAt,
         customer: order.customer?.email || '-',
         fulfillmentStatus: order.displayFulfillmentStatus,
         lineItemsCount: order.subtotalLineItemsQuantity,
@@ -39,9 +40,27 @@ export async function seedOrders(store: string) {
   for (const order of orderchampOrders) {
     const sourceUrl = `https://www.orderchamp.com/backoffice/orders?query=${order.number}`;
 
+    const fulfillmentStatus = {
+      ATTENTION_REQUIRED: OrderFulfillmentStatus.IN_PROGRESS,
+      AWAITING_CONFIRMATION: OrderFulfillmentStatus.UNFULFILLED,
+      AWAITING_DELIVERY: OrderFulfillmentStatus.PENDING_FULFILLMENT,
+      AWAITING_DROP_OFF: OrderFulfillmentStatus.SCHEDULED,
+      AWAITING_FULFILMENT: OrderFulfillmentStatus.PENDING_FULFILLMENT,
+      AWAITING_ORDERCHAMP_APPROVAL: OrderFulfillmentStatus.IN_PROGRESS,
+      AWAITING_PAYMENT: OrderFulfillmentStatus.IN_PROGRESS,
+      AWAITING_SHIPMENT: OrderFulfillmentStatus.IN_PROGRESS,
+      BLOCKED: OrderFulfillmentStatus.ON_HOLD,
+      CANCELLATION_REQUESTED: OrderFulfillmentStatus.ON_HOLD,
+      CANCELLED: OrderFulfillmentStatus.RESTOCKED,
+      COMPLETED: OrderFulfillmentStatus.FULFILLED,
+      FULFILMENT_IN_PROGRESS: OrderFulfillmentStatus.PENDING_FULFILLMENT,
+      ISSUE_REPORTED: OrderFulfillmentStatus.ON_HOLD,
+    } as const;
+
     await prisma.order.create({
       data: {
         storeDomain: store,
+        isCancelled: order.isCancelled,
         customer: order.customer?.email || '-',
         name: order.number,
         platform: Platform.Orderchamp,
@@ -56,9 +75,8 @@ export async function seedOrders(store: string) {
         paymentStatus: order.isPaid
           ? OrderPaymentStatus.PAID
           : OrderPaymentStatus.PENDING,
-        fulfillmentStatus: order.isFulfilled
-          ? OrderFulfillmentStatus.FULFILLED
-          : OrderFulfillmentStatus.UNFULFILLED,
+        fulfillmentStatus:
+          fulfillmentStatus[order.status as keyof typeof fulfillmentStatus],
       },
     });
   }
@@ -78,6 +96,7 @@ export async function seedOrders(store: string) {
     await prisma.order.create({
       data: {
         storeDomain: store,
+        isCancelled: order.state === 'CANCELED',
         platform: Platform.Faire,
         customer: order?.address?.name || '-',
         currencyCode: order.payout_costs.total_payout.currency,
@@ -136,6 +155,7 @@ export async function seedOrders(store: string) {
     await prisma.order.create({
       data: {
         storeDomain: store,
+        isCancelled: order.attributes.status === 'cancelled',
         platform: Platform.Ankorstore,
         customer: order?.attributes.shippingOverview.shipToAddress.name || '-',
         currencyCode: order.attributes.brandCurrency,

@@ -13,23 +13,37 @@ export async function retrieveChunkOfOrders(
 ): Promise<{
   orders: OrderchampOrdersResponse;
   cost: OrderchampQueryCost;
-}> {
+} | null> {
   try {
     const query = gql`
-      query Orders($first: Int!, $afterCursor: String, $sort: OrderSort) {
-        orders(first: $first, after: $afterCursor, sort: $sort) {
+      query Orders(
+        $first: Int!
+        $afterCursor: String
+        $sort: OrderSort
+        $includeCancelled: Boolean
+        $includeUnconfirmed: Boolean
+      ) {
+        orders(
+          first: $first
+          after: $afterCursor
+          sort: $sort
+          includeCancelled: $includeCancelled
+          includeUnconfirmed: $includeUnconfirmed
+        ) {
           nodes {
             id
             number
             customer {
               email
             }
+            email
             totalPrice
             currency
             status
             isFulfilled
             isPaid
             isConfirmed
+            isCancelled
             productsCount
             createdAt
             updatedAt
@@ -46,7 +60,13 @@ export async function retrieveChunkOfOrders(
 
     const { data, extensions } = (await orderchampGraphqlClient.rawRequest(
       query,
-      { first, afterCursor, sort: 'CREATED_AT_DESC' },
+      {
+        first,
+        afterCursor,
+        sort: 'CREATED_AT_DESC',
+        includeCancelled: true,
+        includeUnconfirmed: true,
+      },
     )) as {
       data: { orders: OrderchampOrdersResponse };
       extensions: { throttle: OrderchampQueryCost };
@@ -55,9 +75,11 @@ export async function retrieveChunkOfOrders(
     return { orders: data.orders, cost: extensions.throttle };
   } catch (err) {
     console.error(
-      'An error occurred while receiving orderchamp products: ',
+      'An error occurred while receiving orderchamp ordersx: ',
       err?.message,
     );
+
+    return null;
   }
 }
 
@@ -69,11 +91,29 @@ export async function retrieveAllOrders(): Promise<OrderchampOrder[]> {
     let ordersData: OrderchampOrder[] = [];
 
     while (hasNextPage) {
-      const { orders, cost } = await retrieveChunkOfOrders(limit, afterCursor);
+      const chunkOfOrders = await retrieveChunkOfOrders(limit, afterCursor);
+
+      if (!chunkOfOrders) {
+        return ordersData;
+      }
+
+      const { cost, orders } = chunkOfOrders;
 
       const { nodes, pageInfo } = orders;
 
-      ordersData = [...ordersData, ...nodes];
+      ordersData = [
+        ...ordersData,
+        ...nodes.map((node) => ({
+          ...node,
+          customer: node?.customer?.email
+            ? node?.customer
+            : node.email
+              ? {
+                  email: node.email,
+                }
+              : undefined,
+        })),
+      ];
 
       hasNextPage = pageInfo.hasNextPage;
       afterCursor = hasNextPage ? pageInfo.endCursor : '';
@@ -92,5 +132,7 @@ export async function retrieveAllOrders(): Promise<OrderchampOrder[]> {
       'An error occurred while receiving orderchamp orders: ',
       err?.message,
     );
+
+    return [];
   }
 }

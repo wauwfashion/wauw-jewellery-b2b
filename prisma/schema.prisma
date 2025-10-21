@@ -145,6 +145,7 @@ model Order {
   id                String                 @id @default(uuid())
   name              String
   customer          String
+  isCancelled       Boolean                @default(false) @map("is_canceled")
   storeDomain       String                 @map("store_domain")
   totalPrice        Decimal                @map("total_price")
   currencyCode      String                 @map("currency_code")
