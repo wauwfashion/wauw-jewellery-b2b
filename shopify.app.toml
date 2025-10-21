@@ -7,7 +7,6 @@ name = "B2B Platforms Integration"
 handle = "b2b-platforms-integration"
 
 [build]
-include_config_on_deploy = true
 
 [webhooks]
 api_version = "2025-01"
