@@ -29,7 +29,7 @@ export const action = async ({ request, context }: ActionFunctionArgs) => {
       WebhookTopic.CUSTOMERS_DATA_REQUEST,
     ].includes(topic as WebhookTopic)
   ) {
-    return Response.json({ message: 'OK' }, { status: 200 });
+    return new Response('OK', { status: 200 });
   }
 
   const webhookHandler = webhookHandlers[topic as WebhookTopic];
