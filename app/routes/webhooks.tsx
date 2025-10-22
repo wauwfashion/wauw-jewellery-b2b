@@ -10,10 +10,12 @@ export const action = async ({ request, context }: ActionFunctionArgs) => {
     .replace('/', '_')
     .toUpperCase() as WebhookTopic;
 
+  console.log(`Received webhook - topic: ${topic}, shop: ${shop}`)
+
   const { admin } = await unauthenticated.admin(shop);
 
   if (!admin) {
-    throw new Response();
+    throw new Response('Admin is not exist');
   }
 
   if (!WebhookTopic[topic]) {
