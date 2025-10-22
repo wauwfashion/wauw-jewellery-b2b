@@ -370,7 +370,9 @@ const action: WebhookHandler = async ({ request, shop, graphql }) => {
     }
 
     return new Response();
-  } catch (err) {}
+  } catch (err) {
+    console.log('Create webhook product error: ', err)
+  }
 };
 
 export default action;
